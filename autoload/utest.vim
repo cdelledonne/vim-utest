@@ -4,12 +4,12 @@
 " ==============================================================================
 
 let s:const = utest#const#Get()
-let s:logger = utest#logger#Get()
+let s:logger = libs#logger#Get()
 let s:mock = utest#mock#Get()
 let s:test = utest#test#Get()
 
 " Print news of new Vim-UTest versions.
-call utest#util#PrintNews(s:const.plugin_version, s:const.plugin_news)
+call libs#util#PrintNews(s:const.plugin_version, s:const.plugin_news)
 
 " Log config options.
 call s:logger.LogInfo('Configuration options:')
