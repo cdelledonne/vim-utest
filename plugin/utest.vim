@@ -13,16 +13,16 @@ let g:loaded_utest = 1
 
 " Assign user/default values to coniguration variables.
 " NOTE: must be done before loading other scripts.
-let s:const = utest#const#Get()
-for s:cvar in items(s:const.config_vars)
-    if !has_key(g:, s:cvar[0])
-        let g:[s:cvar[0]] = s:cvar[1]
-    endif
-endfor
+" let s:const = utest#const#Get()
+" for s:cvar in items(s:const.config_vars)
+"     if !has_key(g:, s:cvar[0])
+"         let g:[s:cvar[0]] = s:cvar[1]
+"     endif
+" endfor
 
-let s:logger = utest#logger#Get()
+" let s:logger = utest#logger#Get()
 
-call s:logger.LogInfo('Loading Vim-UTest')
+" call s:logger.LogInfo('Loading Vim-UTest')
 
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 " Commands
@@ -30,6 +30,6 @@ call s:logger.LogInfo('Loading Vim-UTest')
 
 command -nargs=+ -complete=custom,utest#Complete UTest call utest#Run(<f-args>)
 
-call s:logger.LogInfo('Commands defined')
+" call s:logger.LogInfo('Commands defined')
 
-call s:logger.LogInfo('Vim-UTest loaded')
+" call s:logger.LogInfo('Vim-UTest loaded')
