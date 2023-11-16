@@ -3,13 +3,19 @@
 " Description: API functions and global data for Vim-UTest
 " ==============================================================================
 
+let s:assert = utest#assert#Get()
 let s:const = utest#const#Get()
-let s:logger = libs#logger#Get()
-let s:mock = utest#mock#Get()
+let s:system = libs#system#Get()
 let s:test = utest#test#Get()
+let s:logger = libs#logger#Get(s:const.plugin_name)
+let s:error = libs#error#Get(s:const.plugin_name, s:logger)
 
 " Print news of new Vim-UTest versions.
-call libs#util#PrintNews(s:const.plugin_version, s:const.plugin_news)
+let s:news_items = libs#util#FilterNews(
+    \ s:const.plugin_name, s:const.plugin_version, s:const.plugin_news)
+for s:news_item in s:news_items
+    call s:logger.EchoInfo(s:news_item)
+endfor
 
 " Log config options.
 call s:logger.LogInfo('Configuration options:')
@@ -21,7 +27,7 @@ endfor
 " General API functions
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
-" Create new test fixture.
+" Create new test fixture object.
 "
 " Define Setup() and Teardown() methods on the returned fixture. Also use the
 " fixture to store mock objects and runtime data. Pass fixture to
@@ -54,7 +60,7 @@ endfunction
 "
 function! utest#NewMock(functions) abort
     call s:logger.LogDebug('API invoked: utest#NewMock(%s)', a:functions)
-    return s:mock.NewMock(a:functions)
+    return s:test.NewMock(a:functions)
 endfunction
 
 " Add function to list of tests.
@@ -69,11 +75,10 @@ function! utest#AddTest(function, ...) abort
     call s:logger.LogDebug(
         \ 'API invoked: utest#AddTest(%s, %s)', a:function, a:000)
     if a:0 > 1
-        call s:logger.EchoError(s:const.errors['TOO_MANY_ARGS'], 2)
-        call s:logger.LogError(s:const.errors['TOO_MANY_ARGS'], 2)
+        call s:error.Throw('TOO_MANY_ARGS', 2)
     endif
-    let l:fixture = exists('a:1') ? a:1 : v:null
-    call s:test.AddTest(a:function, l:fixture)
+    let fixture = exists('a:1') ? a:1 : s:test.NewFixture()
+    call s:test.AddTest(a:function, fixture)
 endfunction
 
 " API function for :UTest.
@@ -83,22 +88,11 @@ endfunction
 "         directory or file to scan for tests and additional command arguments
 "
 function! utest#Run(...) abort
-    call s:logger.LogDebug(
-        \ 'API invoked: utest#Run(%s)', a:000)
-    if has('vim_starting')
-        " If Vim-UTest was started from the command line, avoid causing errors,
-        " otherwise the headless Vim/Neovim does not exit. Just echo error
-        " messages if they occur.
-        try
-            let l:errors = s:test.RunTests(a:000)
-        catch /.*/
-            let l:errors = 1
-            verbose echon v:throwpoint "\n" v:exception
-        endtry
-        " If Vim-UTest was started from the command line, exit.
-        execute 'cquit ' . (l:errors > 0 ? 1 : 0)
-    else
-        call s:test.RunTests(a:000)
+    call s:logger.LogDebug('API invoked: utest#Run(%s)', a:000)
+    let num_failed_tests = s:test.RunTests(a:000)
+    " If Vim-UTest was started from the command line, exit.
+    if s:system.VimIsStarting()
+        execute 'cquit ' . (num_failed_tests > 0 ? 1 : 0)
     endif
 endfunction
 
@@ -122,6 +116,19 @@ function! utest#Complete(arg_lead, cmd_line, cursor_pos) abort
     " TODO: return complete options
 endfunction
 
+
+" API function to query information about Vim-UTest.
+"
+" Returns:
+"     Dictionary
+"         version : String
+"             Vim-CMake version
+"
+function! utest#GetInfo() abort
+    let l:info = {}
+    let l:info.version = s:const.plugin_version
+    return l:info
+endfunction
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 " Simple asserts
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
@@ -131,51 +138,83 @@ endfunction
 " in case of failure.
 
 function! utest#AssertTrue(condition) abort
-    call s:logger.LogDebug(
-        \ 'API invoked: utest#AssertTrue(%s)', a:condition)
-    call s:test.AssertTrue(a:condition, v:true)
+    call s:logger.LogDebug('API invoked: utest#AssertTrue(%s)', a:condition)
+    call s:assert.AssertTrue(a:condition, v:true)
 endfunction
 
 function! utest#AssertFalse(condition) abort
-    call s:logger.LogDebug(
-        \ 'API invoked: utest#AssertFalse(%s)', a:condition)
-    call s:test.AssertFalse(a:condition, v:true)
+    call s:logger.LogDebug('API invoked: utest#AssertFalse(%s)', a:condition)
+    call s:assert.AssertFalse(a:condition, v:true)
 endfunction
 
 function! utest#AssertEqual(lhs, rhs) abort
-    call s:logger.LogDebug(
-        \ 'API invoked: utest#AssertEqual(%s, %s)', a:lhs, a:rhs)
-    call s:test.AssertEqual(a:lhs, a:rhs, v:true)
+    call s:logger.LogDebug('API invoked: utest#AssertEqual(%s, %s)',
+        \ a:lhs, a:rhs)
+    call s:assert.AssertEqual(a:lhs, a:rhs, v:true)
 endfunction
 
 function! utest#AssertNotEqual(lhs, rhs) abort
-    call s:logger.LogDebug(
-        \ 'API invoked: utest#AssertNotEqual(%s, %s)', a:lhs, a:rhs)
-    call s:test.AssertNotEqual(a:lhs, a:rhs, v:true)
+    call s:logger.LogDebug('API invoked: utest#AssertNotEqual(%s, %s)',
+        \ a:lhs, a:rhs)
+    call s:assert.AssertNotEqual(a:lhs, a:rhs, v:true)
+endfunction
+
+function! utest#AssertInRange(lower, upper, expr) abort
+    call s:logger.LogDebug('API invoked: utest#AssertInRange(%s, %s, %s)',
+        \ a:lower, a:upper, a:expr)
+    call s:assert.AssertInRange(a:lower, a:upper, a:expr, v:true)
+endfunction
+
+function! utest#AssertMatch(pattern, expr) abort
+    call s:logger.LogDebug('API invoked: utest#AssertMatch(%s, %s)',
+        \ a:pattern, a:expr)
+    call s:assert.AssertMatch(a:pattern, a:expr, v:true)
+endfunction
+
+function! utest#AssertNoMatch(pattern, expr) abort
+    call s:logger.LogDebug('API invoked: utest#AssertNoMatch(%s, %s)',
+        \ a:pattern, a:expr)
+    call s:assert.AssertNoMatch(a:pattern, a:expr, v:true)
 endfunction
 
 function! utest#ExpectTrue(condition) abort
-    call s:logger.LogDebug(
-        \ 'API invoked: utest#ExpectTrue(%s)', a:condition)
-    call s:test.AssertTrue(a:condition, v:false)
+    call s:logger.LogDebug('API invoked: utest#ExpectTrue(%s)', a:condition)
+    call s:assert.AssertTrue(a:condition, v:false)
 endfunction
 
 function! utest#ExpectFalse(condition) abort
-    call s:logger.LogDebug(
-        \ 'API invoked: utest#ExpectFalse(%s)', a:condition)
-    call s:test.AssertFalse(a:condition, v:false)
+    call s:logger.LogDebug('API invoked: utest#ExpectFalse(%s)', a:condition)
+    call s:assert.AssertFalse(a:condition, v:false)
 endfunction
 
 function! utest#ExpectEqual(lhs, rhs) abort
-    call s:logger.LogDebug(
-        \ 'API invoked: utest#ExpectEqual(%s, %s)', a:lhs, a:rhs)
-    call s:test.AssertEqual(a:lhs, a:rhs, v:false)
+    call s:logger.LogDebug('API invoked: utest#ExpectEqual(%s, %s)',
+        \ a:lhs, a:rhs)
+    call s:assert.AssertEqual(a:lhs, a:rhs, v:false)
 endfunction
 
 function! utest#ExpectNotEqual(lhs, rhs) abort
-    call s:logger.LogDebug(
-        \ 'API invoked: utest#ExpectNotEqual(%s, %s)', a:lhs, a:rhs)
-    call s:test.AssertNotEqual(a:lhs, a:rhs, v:false)
+    call s:logger.LogDebug('API invoked: utest#ExpectNotEqual(%s, %s)',
+        \ a:lhs, a:rhs)
+    call s:assert.AssertNotEqual(a:lhs, a:rhs, v:false)
+endfunction
+
+function! utest#ExpectInRange(lower, upper, expr) abort
+    call s:logger.LogDebug('API invoked: utest#ExpectInRange(%s, %s, %s)',
+        \ a:lower, a:upper, a:expr)
+    call s:assert.AssertInRange(a:lower, a:upper, a:expr, v:false)
+endfunction
+
+function! utest#ExpectMatch(pattern, expr) abort
+    call s:logger.LogDebug('API invoked: utest#ExpectMatch(%s, %s)',
+        \ a:pattern, a:expr)
+    call s:assert.AssertMatch(a:pattern, a:expr, v:false)
+endfunction
+
+function! utest#ExpectNoMatch(pattern, expr) abort
+    call s:logger.LogDebug('API invoked: utest#ExpectNoMatch(%s, %s)',
+        \ a:pattern, a:expr)
+    call s:assert.AssertNoMatch(a:pattern, a:expr, v:false)
 endfunction
 
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
@@ -198,10 +237,9 @@ function! utest#ExpectCall(mock, function, ...) abort
     call s:logger.LogDebug('API invoked: utest#ExpectCall(%s, %s, %s)',
         \ a:mock, a:function, a:000)
     if a:0 > 2
-        call s:logger.EchoError(s:const.errors['TOO_MANY_ARGS'], 4)
-        call s:logger.LogError(s:const.errors['TOO_MANY_ARGS'], 4)
+        call s:error.Throw('TOO_MANY_ARGS', 4)
     endif
-    let l:args = exists('a:1') ? a:1 : v:null
-    let l:return = exists('a:2') ? a:2 : v:null
-    call s:mock.ExpectCall(a:mock, a:function, l:args, l:return)
+    let args = exists('a:1') ? a:1 : v:null
+    let return = exists('a:2') ? a:2 : v:null
+    call s:assert.ExpectCall(a:mock, a:function, args, return)
 endfunction

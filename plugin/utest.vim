@@ -20,13 +20,17 @@ for s:cvar in items(s:const.config_vars)
     endif
 endfor
 
-" Initialize options for libraries.
-let g:libs_plugin_prefix = 'utest'
-let g:libs_echo_prefix   = '[Vim-UTest] '
-let g:libs_log_file      = g:utest_log_file
-let g:libs_log_level     = g:utest_log_level
+" Configure logger.
+let s:logger = libs#logger#Get(
+    \ s:const.plugin_name,
+    \ s:const.echo_prefix,
+    \ g:utest_log_file,
+    \ g:utest_log_level
+    \ )
 
-let s:logger = libs#logger#Get()
+" Configure error reporter.
+let s:error = libs#error#Get(s:const.plugin_name, s:logger)
+call s:error.ExtendDatabase(s:const.errors)
 
 call s:logger.LogInfo('Loading Vim-UTest')
 
@@ -34,7 +38,7 @@ call s:logger.LogInfo('Loading Vim-UTest')
 " Commands
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
-command -nargs=+ -complete=custom,utest#Complete UTest call utest#Run(<f-args>)
+command -nargs=* -complete=custom,utest#Complete UTest call utest#Run(<f-args>)
 
 call s:logger.LogInfo('Commands defined')
 
