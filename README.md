@@ -72,7 +72,7 @@ To use Vim-UTest, you first define some unit tests. Then you just run the
 
 You can distribute your tests over as many test files as you need, which you can
 for instance store in a `test/` directory at the root of your project. The name
-and path of this directory are for you too choose.
+and path of this directory are for you to choose.
 
 Start by creating a test fixture. The fixture will then be used to define unit
 tests and the optional `SetUp()` and `TearDown()` functions.
@@ -81,17 +81,21 @@ tests and the optional `SetUp()` and `TearDown()` functions.
 let s:fixture = utest#NewFixture()
 ```
 
-Then, if desired, define `SetUp()` and `TearDown()` as dictionary functions of
-the test fixture. `SetUp()` will be called before each unit test, and the unit
-test will only be run if this function succeeds. `TearDown()` will be called
-after each unit test, regardless of the outcome of the test, but only if
-`SetUp()` succeeds.
+If desired, define `SetUp()` as a dictionary function of the test fixture. This
+function will be run before each unit test, and the unit test will only be run
+if this function succeeds.
 
 ```vim
 function! s:fixture.SetUp() abort
     let self.component = myplugin#component#Get()
 endfunction
+```
 
+If desired, define `TearDown()` as a dictionary function of the test fixture.
+This function will be run after each unit test, regardless of the outcome of the
+test, but only if `SetUp()` succeeds.
+
+```vim
 function! s:fixture.TearDown() abort
     call self.component.CleanUp()
 endfunction
