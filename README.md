@@ -41,7 +41,7 @@ functionalities like writing to buffer, triggering autocommands, etc. are
 confined to an abstraction layer at the edge of the project's software
 architecture.  The abstraction layer can then be mocked when testing units that
 depend on it.  And yes, Vim-UTest supports mocking (see [Writing
-mocks](#writing-mocks).
+mocks](#writing-mocks)).
 
 <!--=========================================================================-->
 
