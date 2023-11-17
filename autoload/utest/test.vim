@@ -4,7 +4,7 @@
 " ==============================================================================
 
 let s:test = {}
-let s:test.tests = {}
+let s:test.fixtures = []
 let s:test.qflist_id = -1
 
 let s:assert = utest#assert#Get()
@@ -21,16 +21,14 @@ let s:error = libs#error#Get(s:const.plugin_name, s:logger)
 
 function! s:ParseRunArgs(args) abort
     let tests = []
-    let cursor = v:false
     " Parse arguments.
     let parser = libs#argparser#New()
     call parser.AddArgument('path', '?')
     call parser.AddArgument('--name', '*')
-    call parser.AddArgument('--cursor', '?', 'store_true')
     let opts = parser.Parse(a:args)
     let path = remove(opts, 'path')
     let path = path is v:null ? g:utest_default_test_dir : path
-    let path = s:system.Path([path], v:false)
+    let path = s:system.Path(path, v:false)
     " Check test path.
     if s:system.FileIsReadable(path)
         let files = [path]
@@ -43,21 +41,16 @@ function! s:ParseRunArgs(args) abort
     if has_key(opts, 'name')
         let tests = type(opts.name) == v:t_list ? opts.name : [opts.name]
     endif
-    if has_key(opts, 'cursor')
-        if opts.cursor
-            " TODO: retrieve name of test at or above cursor
-            " TODO: check that only one of --name and --cursor is used
-            call s:error.Throw('OPT_NOT_IMPLEMENTED', string('--cursor'))
-        endif
-    endif
-    return [files, tests, cursor]
+    return [files, tests]
 endfunction
 
-function! s:CheckSelectedTestsExist(selected_tests, all_tests) abort
+function! s:CheckSelectedTestsExist(selected_tests, fixtures) abort
     " Make list of all tests.
-    let test_name_dicts = map(values(a:all_tests), {_, v -> values(v)})
-    let flattened_test_name_dicts = flatten(test_name_dicts)
-    let test_names = map(flattened_test_name_dicts, {_, v -> v.funcname})
+    let test_dicts = []
+    for fixture in a:fixtures
+        call extend(test_dicts, fixture._GetTests())
+    endfor
+    let test_names = map(test_dicts, {_, v -> v.funcname})
     call uniq(test_names)
     " Check that selected tests is a subset of all tests.
     for test in a:selected_tests
@@ -67,17 +60,17 @@ function! s:CheckSelectedTestsExist(selected_tests, all_tests) abort
     endfor
 endfunction
 
-function! s:RunTest(funcname, test) abort
+function! s:RunTest(fixture, test) abort
     let error_list = []
     let a:test.setup_running = v:false
     let a:test.teardown_running = v:false
-    call s:report.ReportTestInfo('Running test ''%s''', a:funcname)
-    call s:logger.LogDebug('Running test ''%s''', a:funcname)
+    call s:report.ReportTestInfo('Running test ''%s''', a:test.funcname)
+    call s:logger.LogDebug('Running test ''%s''', a:test.funcname)
     " Run the SetUp() function. If this does not run successfully, we won't run
     " the test function (nor the TearDown() function).
     try
         let a:test.setup_running = v:true
-        call a:test.fixture.SetUp()
+        call a:fixture.SetUp()
     catch /vim-utest-assert-failed/
     finally
         let a:test.setup_running = v:false
@@ -86,14 +79,14 @@ function! s:RunTest(funcname, test) abort
     " function succeeded (i.e. no errors recorded so far).
     if len(a:test.errors) == 0
         try
-            call a:test.funcref(a:test.fixture)
+            call a:fixture[a:test.funcname]()
         catch /vim-utest-assert-failed/
         endtry
         " The TearDown() function is run whether or not the test function as
         " incurred any errors.
         try
             let a:test.teardown_running = v:true
-            call a:test.fixture.TearDown()
+            call a:fixture.TearDown()
         catch /vim-utest-assert-failed/
         finally
             let a:test.teardown_running = v:false
@@ -128,10 +121,9 @@ endfunction
 "
 function! s:test.NewFixture() abort
     call s:logger.LogDebug('Invoked: test.NewFixture()')
-    return {
-        \ 'SetUp': {-> 0},
-        \ 'TearDown': {-> 0},
-        \ }
+    let fixture = utest#fixture#New()
+    call add(self.fixtures, fixture)
+    return fixture
 endfunction
 
 " Create new mock object.
@@ -164,53 +156,6 @@ function! s:test.NewMock(functions) abort
     return mock
 endfunction
 
-" Add function to list of tests.
-"
-" Params:
-"     funcref : Funcref
-"         function to run as test
-"     fixture : Dictionary
-"         test fixture, as returned by AddFixture(), or v:null
-"
-function! s:test.AddTest(funcref, fixture) abort
-    call s:logger.LogDebug(
-        \ 'Invoked: test.AddTest(%s, %s)', a:funcref, a:fixture)
-    " Extract file and line of function definition, also for SetUp() and
-    " TearDown() functions.
-    let [file, func_lnum] = s:system.GetFunctionInfo(a:funcref)
-    let [setup_lnum, teardown_lnum] = [v:null, v:null]
-    let [_, setup_lnum] = s:system.GetFunctionInfo(a:fixture.SetUp)
-    let [_, teardown_lnum] = s:system.GetFunctionInfo(a:fixture.TearDown)
-    " Also extract function name of test function.
-    let funcname = matchlist(
-        \ string(a:funcref),
-        \ '\m\Cfunction(''\(<SNR>\d\+_\)\?\(.*\)'')'
-        \ )[2]
-    " Create dictionary of tests for this file, if it doesn't exist.
-    if !has_key(self.tests, file)
-        let self.tests[file] = {}
-    endif
-    " Check if test already exists in this test file.
-    let funcnames = map(values(self.tests[file]), {_, v -> v.funcname})
-    if s:system.ListHas(funcnames, funcname)
-        call s:error.Throw('TEST_EXISTS', string(funcname), string(file))
-    endif
-    " Add test to dictionary.
-    let test = {
-        \ 'funcname': funcname,
-        \ 'funcref': a:funcref,
-        \ 'file': file,
-        \ 'func_lnum': func_lnum,
-        \ 'setup_lnum': setup_lnum,
-        \ 'teardown_lnum': teardown_lnum,
-        \ 'fixture': a:fixture,
-        \ 'errors': [],
-        \ }
-    let id = len(self.tests[file])
-    let self.tests[file][id] = test
-    call s:logger.LogDebug('Added test %s: %s', string(funcname), test)
-endfunction
-
 " Run tests in a certain directory or file.
 "
 " Params:
@@ -221,14 +166,9 @@ endfunction
 "     Number
 "         number of failed tests
 "
-" Notes:
-"     - By default, all tests found in path are run
-"     - The options name and cursor are mutually exclusive - if both are
-"       specified, the function exits with an error
-"
 function! s:test.RunTests(args) abort
     call s:logger.LogDebug('Invoked: test.Run(%s)', a:args)
-    let self.tests = {}
+    let self.fixtures = []
     let num_tests = 0
     let num_failed_tests = 0
     let error_list = []
@@ -238,31 +178,32 @@ function! s:test.RunTests(args) abort
     endif
     call s:report.ReportInfo('Running Vim-UTest')
     try
-        let [files, selected_tests, cursor] = s:ParseRunArgs(a:args)
+        let [files, selected_tests] = s:ParseRunArgs(a:args)
         let run_all = len(selected_tests) > 0 ? v:false : v:true
-        " Source test files - list of tests is populated here.
+        " Source test files to discover test fixtures, then compile list of
+        " tests for each fixture.
         for file in files
             call s:system.Source(file)
         endfor
+        for fixture in self.fixtures
+            call fixture._CompileTests()
+        endfor
         " Check that selected tests match at least one existing test each.
         if !run_all
-            call s:CheckSelectedTestsExist(selected_tests, self.tests)
+            call s:CheckSelectedTestsExist(selected_tests, self.fixtures)
         endif
-        " Run tests, going through test files in alphabetical order.
-        for file in sort(keys(self.tests))
-            call s:report.ReportInfo('Running tests in file %s', file)
-            call s:logger.LogDebug('Running tests in file %s', file)
-            " Sort tests by ID - tests that were defined first have a lower ID.
-            " Note: in the following lambda, 'i' is the item (the test), and
-            " '[0]' is the key of the item (the ID).
-            let tests = sort(items(self.tests[file]), {i -> str2nr(i[0])})
-            for [id, test] in tests
+        " Run tests, going through test fixtures in the order they were
+        " discovered in the sourced files.
+        for fixture in self.fixtures
+            call s:report.ReportInfo('Running tests in file %s', fixture.file)
+            call s:logger.LogDebug('Running tests in file %s', fixture.file)
+            for test in fixture._GetTests()
                 " Only run this test if all tests are to be run or if a test was
                 " selected explicitly.
                 if run_all || s:system.ListHas(selected_tests, test.funcname)
                     let num_tests += 1
                     call s:assert.SetCurrentTest(test)
-                    let current_error_list = s:RunTest(test.funcname, test)
+                    let current_error_list = s:RunTest(fixture, test)
                     let num_failed_tests += len(current_error_list) > 0 ? 1 : 0
                     call extend(error_list, current_error_list)
                 endif
@@ -273,6 +214,7 @@ function! s:test.RunTests(args) abort
         call s:report.ReportTestError(v:throwpoint)
         call s:report.ReportTestError(v:exception)
         call s:report.ReportInfo('Tests aborted due to uncaught exception')
+        call s:system.AutocmdRun('UTestTestAborted')
         return num_failed_tests
     finally
         if g:utest_focus_on_completion ||
@@ -291,6 +233,8 @@ function! s:test.RunTests(args) abort
     call s:logger.LogDebug('Total tests: %d, Passed: %d, Failed: %d',
         \ num_tests, num_passed_tests, num_failed_tests
         \ )
+    let event = num_failed_tests > 0 ? 'UTestTestFailed' : 'UTestTestSucceeded'
+    call s:system.AutocmdRun(event)
     return num_failed_tests
 endfunction
 

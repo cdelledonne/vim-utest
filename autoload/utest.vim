@@ -29,9 +29,9 @@ endfor
 
 " Create new test fixture object.
 "
-" Define SetUp() and TearDown() methods on the returned fixture. Also use the
-" fixture to store mock objects and runtime data. Pass fixture to
-" utest#AddTest().
+" Define test functions on the returned fixture. Also define SetUp() and
+" TearDown() methods on the returned fixture. Also use the fixture to store mock
+" objects and runtime data.
 "
 " Returns:
 "     Dictionary
@@ -61,24 +61,6 @@ endfunction
 function! utest#NewMock(functions) abort
     call s:logger.LogDebug('API invoked: utest#NewMock(%s)', a:functions)
     return s:test.NewMock(a:functions)
-endfunction
-
-" Add function to list of tests.
-"
-" Params:
-"     function : Funcref
-"         function to be run as test
-"     a:1 : Dictionary
-"         optional test fixture
-"
-function! utest#AddTest(function, ...) abort
-    call s:logger.LogDebug(
-        \ 'API invoked: utest#AddTest(%s, %s)', a:function, a:000)
-    if a:0 > 1
-        call s:error.Throw('TOO_MANY_ARGS', 2)
-    endif
-    let fixture = exists('a:1') ? a:1 : s:test.NewFixture()
-    call s:test.AddTest(a:function, fixture)
 endfunction
 
 " API function for :UTest.

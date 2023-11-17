@@ -15,8 +15,6 @@ let s:const.plugin_news = {}
 let s:const.errors = {
     \ 'TOO_MANY_ARGS':
     \     'Too many arguments. Maximum is %d',
-    \ 'TEST_EXISTS':
-    \     'Test %s already defined in file %s',
     \ 'TEST_DOES_NOT_EXIST':
     \     'Test with function %s does not exist',
     \ 'NO_SUCH_PATH':
