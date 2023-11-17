@@ -73,28 +73,36 @@ function! s:RunTest(funcname, test) abort
     let a:test.teardown_running = v:false
     call s:report.ReportTestInfo('Running test ''%s''', a:funcname)
     call s:logger.LogDebug('Running test ''%s''', a:funcname)
+    " Run the SetUp() function. If this does not run successfully, we won't run
+    " the test function (nor the TearDown() function).
     try
-        " Run Setup().
         let a:test.setup_running = v:true
-        call a:test.fixture.Setup()
+        call a:test.fixture.SetUp()
+    catch /vim-utest-assert-failed/
+    finally
         let a:test.setup_running = v:false
-        " Run actual test function.
-        call a:test.funcref(a:test.fixture)
-        " Run Teardown().
-        let a:test.teardown_running = v:true
-        call a:test.fixture.Teardown()
-        let a:test.teardown_running = v:false
-    catch /vim-utest-assert/
-        " Failed asserts make current test abort.
     endtry
+    " The test function and the TearDown() function are only run if the SetUp()
+    " function succeeded (i.e. no errors recorded so far).
+    if len(a:test.errors) == 0
+        try
+            call a:test.funcref(a:test.fixture)
+        catch /vim-utest-assert-failed/
+        endtry
+        " The TearDown() function is run whether or not the test function as
+        " incurred any errors.
+        try
+            let a:test.teardown_running = v:true
+            call a:test.fixture.TearDown()
+        catch /vim-utest-assert-failed/
+        finally
+            let a:test.teardown_running = v:false
+        endtry
+    endif
     if len(a:test.errors) > 0
         for error in a:test.errors
-            let error_args = [
-                \ '%s:%d: Error: %s',
-                \ a:test.file,
-                \ error.lnum,
-                \ error.msg
-                \ ]
+            let fmt = '%s:%d: Error: %s'
+            let error_args = [fmt, a:test.file, error.lnum, error.msg]
             call call(funcref('s:report.ReportTestError'), error_args, s:report)
             call call(funcref('s:logger.LogDebug'), error_args, s:logger)
             call add(error_list, call('printf', error_args))
@@ -121,8 +129,8 @@ endfunction
 function! s:test.NewFixture() abort
     call s:logger.LogDebug('Invoked: test.NewFixture()')
     return {
-        \ 'Setup': {-> 0},
-        \ 'Teardown': {-> 0},
+        \ 'SetUp': {-> 0},
+        \ 'TearDown': {-> 0},
         \ }
 endfunction
 
@@ -167,12 +175,12 @@ endfunction
 function! s:test.AddTest(funcref, fixture) abort
     call s:logger.LogDebug(
         \ 'Invoked: test.AddTest(%s, %s)', a:funcref, a:fixture)
-    " Extract file and line of function definition, also for Setup() and
-    " Teardown() functions.
+    " Extract file and line of function definition, also for SetUp() and
+    " TearDown() functions.
     let [file, func_lnum] = s:system.GetFunctionInfo(a:funcref)
     let [setup_lnum, teardown_lnum] = [v:null, v:null]
-    let [_, setup_lnum] = s:system.GetFunctionInfo(a:fixture.Setup)
-    let [_, teardown_lnum] = s:system.GetFunctionInfo(a:fixture.Teardown)
+    let [_, setup_lnum] = s:system.GetFunctionInfo(a:fixture.SetUp)
+    let [_, teardown_lnum] = s:system.GetFunctionInfo(a:fixture.TearDown)
     " Also extract function name of test function.
     let funcname = matchlist(
         \ string(a:funcref),

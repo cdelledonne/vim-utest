@@ -45,7 +45,7 @@ function! s:AssertTrue(condition, error_msg, test, abort) abort
     let error_msg = printf('%s (%s)', a:error_msg, error_func_name)
     call add(a:test.errors, {'msg': error_msg, 'lnum': error_lnum})
     if a:abort
-        throw 'vim-utest-assert'
+        throw 'vim-utest-assert-failed'
     endif
 endfunction
 

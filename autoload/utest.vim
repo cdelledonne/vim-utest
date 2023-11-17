@@ -29,7 +29,7 @@ endfor
 
 " Create new test fixture object.
 "
-" Define Setup() and Teardown() methods on the returned fixture. Also use the
+" Define SetUp() and TearDown() methods on the returned fixture. Also use the
 " fixture to store mock objects and runtime data. Pass fixture to
 " utest#AddTest().
 "
