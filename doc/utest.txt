@@ -1,0 +1,229 @@
+*utest.txt*	Vimscript unit testing plugin with mocking support
+*utest* *vim-utest*
+
+Maintainer:	Carlo Delle Donne <https://github.com/cdelledonne>
+Version:	0.1.0
+
+==============================================================================
+CONTENTS						*utest-contents*
+
+ 1. Intro ............................................. |utest-intro|
+ 2. When to use ....................................... |utest-when-to-use|
+ 3. Usage ............................................. |utest-usage|
+ 4. Writing unit tests ................................ |utest-tests|
+ 5. Writing mocks ..................................... |utest-mocks|
+ 6. Commands .......................................... |utest-commands|
+ 7. Functions ......................................... |utest-functions|
+ 8. Events ............................................ |utest-events|
+ 9. Quickfix list ..................................... |utest-quickfix|
+10. Running tests from the command line ............... |utest-cli|
+11. Configuration ..................................... |utest-configuration|
+12. Contributing ...................................... |utest-contributing|
+13. License ........................................... |utest-license|
+
+==============================================================================
+INTRO							*utest-intro*
+
+Vim-UTest is plugin to unit-test Vimscript code.  It has also mocking support.
+It can be run from within Vim/Neovim as well as from the command line.
+
+Features~
+
+- Test cases are simply written in Vimscript
+- Support for test fixtures with optional setup and tear-down
+- Support for mocking of dependencies
+- Can be run from within Vim/Neovim as well as from the command line
+- Autocompletion for unit test names (when used from within Vim/Neovim)
+- Quickfix list population with test errors (when used from within Vim/Neovim)
+- Written in Vimscript
+
+==============================================================================
+WHEN TO USE						*utest-when-to-use*
+
+Vim-UTest lets you test Vimscript functions.  It is not designed to test user
+keystrokes and buffer output.  As such, Vim-UTest works best if the units of
+code under test are Vimscript functions that simply process their input
+arguments and return Vimscript expressions.  This means that actions like
+writing to a buffer and triggering autocommands cannot be tested natively.
+
+A Vimscript project is more suited to be tested with Vim-UTest if
+functionalities like writing to buffer, triggering autocommands, etc. are
+confined to an abstraction layer at the edge of the project's software
+architecture.  The abstraction layer can then be mocked when testing units
+that depend on it.  And yes, Vim-UTest supports mocking (see |utest-mocks|).
+
+==============================================================================
+USAGE							*utest-usage*
+
+To use Vim-UTest, you first define some unit tests. Then you just call the
+|:UTest| command and observe your tests' results. A quick guide follows.
+
+==============================================================================
+WRITING UNIT TESTS					*utest-tests*
+
+You can distribute your tests over as many test files as you need, which you
+can for instance store in a `test/` directory at the root of your project. The
+name and path of this directory are for you too choose.
+
+Start by creating a test fixture. The fixture will then be used to define unit
+tests and the optional `SetUp()` and `TearDown()` functions.
+>
+	let s:fixture = utest#NewFixture()
+<
+Then, if desired, define `SetUp()` and `TearDown()` as dictionary functions of
+the test fixture. `SetUp()` will be called before each unit test, and the unit
+test will only be run if this function succeeds. `TearDown()` will be called
+after each unit test, regardless of the outcome of the test, but only if
+`SetUp()` succeeds.
+>
+	function! s:fixture.SetUp() abort
+	    let self.component = myplugin#component#Get()
+	endfunction
+
+	function! s:fixture.TearDown() abort
+	    call self.component.CleanUp()
+	endfunction
+<
+Finally, write your unit tests as dictionary functions of the test fixture.
+Make use of the assertion and expectation functions (|utest-functions|)
+provided by Vim-UTest to test your code.
+>
+	function! s:fixture.TestSimpleOk() abort
+	    let result = self.component.ComputeResult(1, 2)
+	    call utest#ExpectEqual(result, 3)
+	endfunction
+<
+That's it, you're done writing unit tests. Or not - if your component under
+test depends on other components that you don't want to trigger, but you still
+want to check that your component under test issues the appropriate calls to
+its dependencies, then it's time to write a mock!
+
+==============================================================================
+WRITING MOCKS						*utest-mocks*
+
+	*Todo	write this section
+
+==============================================================================
+COMMANDS						*utest-commands*
+
+When you're done writing unit tests and mocks, you just run the |:UTest|
+command, which has the interface specified below.
+
+							*:UTest*
+:UTest [path]
+		Scan [path] for tests and run all tests found.  [path] can be
+		a file or a directory.  Directories are scanned recursively.
+		If [path] is not specified, Vim-UTest will use the value of
+		`g:utest_default_test_dir` (see |utest-configuration|).
+
+:UTest [path] --name {testname}
+		Scan [path] for tests and only run the test specified by
+		{testname}.  The option `--name` can be passed multiple times.
+		[path] is used as above.
+
+==============================================================================
+FUNCTIONS						*utest-functions*
+
+	*Todo	general functions
+
+	*Todo	assertion and expectation functions
+
+==============================================================================
+EVENTS							*utest-events*
+
+To customize the behaviour before and after running |:UTest|, Vim-UTest
+defines some user events.
+
+`UTestTestSucceeded`	Triggered after a successful test run
+`UTestTestFailed`	Triggered after a failed test run
+`UTestTestAborted`	Triggered after a test was aborted
+
+Example usage of `UTestTestFailed` to jump to the first error
+>
+	let g:utest_focus_on_error = 0 " We do not want to focus the buffer
+	augroup vim-utest-group
+	autocmd User UTestTestFailed cfirst
+	augroup END
+<
+==============================================================================
+QUICKFIX LIST						*utest-quickfix*
+
+After each test run, Vim-UTest populates a quickfix list to speed up the
+workflow.  Upon an unsuccessful test run, just use the standard quickfix
+commands to open the list of errors (e.g. |:copen|) and jump between errors
+(e.g. |:cfirst|, |:cnext|).
+
+==============================================================================
+RUNNING TESTS FROM THE COMMAND LINE			*utest-cli*
+
+For Neovim, just run the |:UTest| command in headless mode (|--headless|):
+>
+	nvim --headless -c 'UTest'
+<
+For Vim, run the |:UTest| command in silent mode (|-e| and |-s|), with the
+|'nocompatible'| option (|-N|), optionally disabling swap files (|-n|) and
+explicitly loading the user configuration file (|-u|) because silent mode
+skips loading this file by default.
+>
+	vim -es -N -n -u ~/.vim/vimrc -c 'UTest'
+<
+Be aware that if you want to echo messages in silent mode (Vim), you need to
+use `:verbose echo` instead of just `:echo` for them to be displayed.
+
+==============================================================================
+CONFIGURATION						*utest-configuration*
+
+Vim-UTest has sensible defaults, but aims to be configurable.  A list of
+configuration options, with default values, follows.
+
+g:utest_default_test_dir (default: `'test'`)
+		Directory to use if the [path] argument is not specified when
+		running |:UTest|.
+
+g:utest_window_size (default: `15`)
+		Size of the Vim-UTest window, applicable when |:UTest| is used
+		from within Vim/Neovim.
+
+g:utest_window_position (default: `'botright'`)
+		Command modifier to use when opening the Vim-UTest window,
+		applicable when |:UTest| is used from within Vim/Neovim (see
+		|:botright|).
+
+g:utest_focus (default: `v:false`)
+		Whether to focus the Vim-UTest window when running the
+		|:UTest| command, applicable when used from within Vim/Neovim.
+
+g:utest_focus_on_completion (default: `v:false`)
+		Whether to focus the Vim-UTest window when the |:UTest|
+		command completes, applicable when used from within
+		Vim/Neovim.
+
+g:utest_focus_on_error (default: `v:true`)
+		Whether to focus the Vim-UTest window when the |:UTest|
+		command completes with an error, applicable when used from
+		within Vim/Neovim.
+
+g:utest_log_file (default: `''`)
+		Path to a file where to store the log of Vim-UTest.  An empty
+		value disables logging.
+
+g:utest_log_level (default: `'INFO'`)
+		Level for logging.  Valid values are: `'ERROR'`, `'WARN'`,
+		`'INFO'`, `'DEBUG'`, `'TRACE'`.
+
+==============================================================================
+CONTRIBUTING						*utest-contributing*
+
+Feedback and feature requests are appreciated.  Bug reports and pull requests
+are very welcome.  Check the Contributing Guidelines for how to write a
+feature request, post an issue or submit a pull request:
+
+https://github.com/cdelledonne/vim-utest/blob/main/CONTRIBUTING.md
+
+==============================================================================
+LICENSE							*utest-license*
+
+MIT license.  Copyright (c) 2023 Carlo Delle Donne.
+
+------------------------------------------------------------------------------
+vim:tw=78:ts=8:noet:ft=help:norl:
