@@ -98,7 +98,6 @@ function! utest#Complete(arg_lead, cmd_line, cursor_pos) abort
     " TODO: return complete options
 endfunction
 
-
 " API function to query information about Vim-UTest.
 "
 " Returns:
@@ -111,34 +110,35 @@ function! utest#GetInfo() abort
     let l:info.version = s:const.plugin_version
     return l:info
 endfunction
+
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 " Simple asserts
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
-" Use AssertSomething() function to abort the test in case of failure, otherwise
+" Use AssertSomething() function to stop the test in case of failure, otherwise
 " use the ExpectSomething() variants to continue the execution of the test also
 " in case of failure.
 
-function! utest#AssertTrue(condition) abort
-    call s:logger.LogDebug('API invoked: utest#AssertTrue(%s)', a:condition)
-    call s:assert.AssertTrue(a:condition, v:true)
+function! utest#AssertTrue(expr) abort
+    call s:logger.LogDebug('API invoked: utest#AssertTrue(%s)', a:expr)
+    call s:assert.AssertTrue(a:expr, v:true)
 endfunction
 
-function! utest#AssertFalse(condition) abort
-    call s:logger.LogDebug('API invoked: utest#AssertFalse(%s)', a:condition)
-    call s:assert.AssertFalse(a:condition, v:true)
+function! utest#AssertFalse(expr) abort
+    call s:logger.LogDebug('API invoked: utest#AssertFalse(%s)', a:expr)
+    call s:assert.AssertFalse(a:expr, v:true)
 endfunction
 
-function! utest#AssertEqual(lhs, rhs) abort
+function! utest#AssertEqual(value, expr) abort
     call s:logger.LogDebug('API invoked: utest#AssertEqual(%s, %s)',
-        \ a:lhs, a:rhs)
-    call s:assert.AssertEqual(a:lhs, a:rhs, v:true)
+        \ a:value, a:expr)
+    call s:assert.AssertEqual(a:value, a:expr, v:true)
 endfunction
 
-function! utest#AssertNotEqual(lhs, rhs) abort
+function! utest#AssertNotEqual(value, expr) abort
     call s:logger.LogDebug('API invoked: utest#AssertNotEqual(%s, %s)',
-        \ a:lhs, a:rhs)
-    call s:assert.AssertNotEqual(a:lhs, a:rhs, v:true)
+        \ a:value, a:expr)
+    call s:assert.AssertNotEqual(a:value, a:expr, v:true)
 endfunction
 
 function! utest#AssertInRange(lower, upper, expr) abort
@@ -159,26 +159,26 @@ function! utest#AssertNoMatch(pattern, expr) abort
     call s:assert.AssertNoMatch(a:pattern, a:expr, v:true)
 endfunction
 
-function! utest#ExpectTrue(condition) abort
-    call s:logger.LogDebug('API invoked: utest#ExpectTrue(%s)', a:condition)
-    call s:assert.AssertTrue(a:condition, v:false)
+function! utest#ExpectTrue(expr) abort
+    call s:logger.LogDebug('API invoked: utest#ExpectTrue(%s)', a:expr)
+    call s:assert.AssertTrue(a:expr, v:false)
 endfunction
 
-function! utest#ExpectFalse(condition) abort
-    call s:logger.LogDebug('API invoked: utest#ExpectFalse(%s)', a:condition)
-    call s:assert.AssertFalse(a:condition, v:false)
+function! utest#ExpectFalse(expr) abort
+    call s:logger.LogDebug('API invoked: utest#ExpectFalse(%s)', a:expr)
+    call s:assert.AssertFalse(a:expr, v:false)
 endfunction
 
-function! utest#ExpectEqual(lhs, rhs) abort
+function! utest#ExpectEqual(value, expr) abort
     call s:logger.LogDebug('API invoked: utest#ExpectEqual(%s, %s)',
-        \ a:lhs, a:rhs)
-    call s:assert.AssertEqual(a:lhs, a:rhs, v:false)
+        \ a:value, a:expr)
+    call s:assert.AssertEqual(a:value, a:expr, v:false)
 endfunction
 
-function! utest#ExpectNotEqual(lhs, rhs) abort
+function! utest#ExpectNotEqual(value, expr) abort
     call s:logger.LogDebug('API invoked: utest#ExpectNotEqual(%s, %s)',
-        \ a:lhs, a:rhs)
-    call s:assert.AssertNotEqual(a:lhs, a:rhs, v:false)
+        \ a:value, a:expr)
+    call s:assert.AssertNotEqual(a:value, a:expr, v:false)
 endfunction
 
 function! utest#ExpectInRange(lower, upper, expr) abort

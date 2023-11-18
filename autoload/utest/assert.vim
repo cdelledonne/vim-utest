@@ -59,9 +59,9 @@ endfunction
 
 " Assert that a condition is true.
 "
-function! s:assert.AssertTrue(condition, abort) abort
+function! s:assert.AssertTrue(expr, abort) abort
     call s:AssertTrue(
-        \ assert_true(a:condition) == 0,
+        \ assert_true(a:expr) == 0,
         \ printf('Condition is not true'),
         \ self.current_test,
         \ a:abort
@@ -70,9 +70,9 @@ endfunction
 
 " Assert that a condition is false.
 "
-function! s:assert.AssertFalse(condition, abort) abort
+function! s:assert.AssertFalse(expr, abort) abort
     call s:AssertTrue(
-        \ assert_false(a:condition) == 0,
+        \ assert_false(a:expr) == 0,
         \ printf('Condition is not false'),
         \ self.current_test,
         \ a:abort,
@@ -81,10 +81,10 @@ endfunction
 
 " Assert that two values are equal.
 "
-function! s:assert.AssertEqual(lhs, rhs, abort) abort
+function! s:assert.AssertEqual(value, expr, abort) abort
     call s:AssertTrue(
-        \ assert_equal(a:lhs, a:rhs) == 0,
-        \ printf('%s and %s are not equal', string(a:lhs), string(a:rhs)),
+        \ assert_equal(a:value, a:expr) == 0,
+        \ printf('%s is not equal to %s', string(a:expr), string(a:value)),
         \ self.current_test,
         \ a:abort,
         \ )
@@ -92,10 +92,10 @@ endfunction
 
 " Assert that two values are not equal.
 "
-function! s:assert.AssertNotEqual(lhs, rhs, abort) abort
+function! s:assert.AssertNotEqual(value, expr, abort) abort
     call s:AssertTrue(
-        \ assert_notequal(a:lhs, a:rhs) == 0,
-        \ printf('%s and %s are equal', string(a:lhs), string(a:rhs)),
+        \ assert_notequal(a:value, a:expr) == 0,
+        \ printf('%s is equal to %s', string(a:expr), string(a:value)),
         \ self.current_test,
         \ a:abort,
         \ )

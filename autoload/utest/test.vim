@@ -214,7 +214,7 @@ function! s:test.RunTests(args) abort
         call s:report.ReportTestError(v:throwpoint)
         call s:report.ReportTestError(v:exception)
         call s:report.ReportInfo('Tests aborted due to uncaught exception')
-        call s:system.AutocmdRun('UTestTestAborted')
+        call s:system.AutocmdRun('UTestTestsAborted')
         return num_failed_tests
     finally
         if g:utest_focus_on_completion ||
@@ -233,8 +233,8 @@ function! s:test.RunTests(args) abort
     call s:logger.LogDebug('Total tests: %d, Passed: %d, Failed: %d',
         \ num_tests, num_passed_tests, num_failed_tests
         \ )
-    let event = num_failed_tests > 0 ? 'UTestTestFailed' : 'UTestTestSucceeded'
-    call s:system.AutocmdRun(event)
+    let cmd = num_failed_tests > 0 ? 'UTestTestsFailed' : 'UTestTestsSucceeded'
+    call s:system.AutocmdRun(cmd)
     return num_failed_tests
 endfunction
 
