@@ -87,10 +87,10 @@ the test, but only if `SetUp()` succeeds.
 	endfunction
 <
 Finally, write your unit tests as dictionary functions of the test fixture.
-Make use of the assertion and expectation functions (|utest-functions|)
-provided by Vim-UTest to test your code.
+Make use of the functions provided by Vim-UTest (|utest-functions|) to set
+expectations for your code under test.
 >
-	function! s:fixture.TestSimpleOk() abort
+	function! s:fixture.TestComputeResult() abort
 	    let result = self.component.ComputeResult(1, 2)
 	    call utest#ExpectEqual(result, 3)
 	endfunction
@@ -103,13 +103,14 @@ its dependencies, then it's time to write a mock!
 ==============================================================================
 WRITING MOCKS						*utest-mocks*
 
-	*Todo	write this section
+TODO: write when adding support for mocking.
 
 ==============================================================================
 COMMANDS						*utest-commands*
 
 When you're done writing unit tests and mocks, you just run the |:UTest|
-command, which has the interface specified below.
+command.  You will observe a report of the outcomes of your unit tests as the
+test functions are executed.
 
 							*:UTest*
 :UTest [path]
@@ -126,25 +127,89 @@ command, which has the interface specified below.
 ==============================================================================
 FUNCTIONS						*utest-functions*
 
-	*Todo	general functions
+Use these Vim-UTest functions to create test fixtures and mocks, to define
+pre-test and post-test actions, and to set expectations.
 
-	*Todo	assertion and expectation functions
+Creating test fixtures and mocks~
+
+utest#NewFixture()
+		Create and return a new test fixture object, which is
+		effectively a |Dictionary|.  You can then define mocks, set-up
+		and tear-down actions and unit tests by adding items to the
+		returned |Dictionary|.
+
+utest#NewMock({functions})
+		TODO: write when adding support for mocking.
+
+Defining pre-test and post-test actions~
+
+fixture.SetUp()
+		Define this dictionary function as a member of the test
+		fixture to speficy actions to be run before each test.  The
+		unit test will only be run if this function succeeds.
+
+fixture.TearDown()
+		Define this dictionary function as a member of the test
+		fixture to speficy actions to be run after each test.  This
+		function will be run regardless of the outcome of the test,
+		but only if `SetUp()` succeeds.
+
+Setting simple expectations~
+
+Expectations can be specified by using the `Assert` variants of the following
+functions or the `Expect` ones.  When an `Assert` function fails, the current
+test is stopped. When an `Expect` function fails instead, the error is
+recorded, but the test continues.
+
+utest#AssertTrue({expr})
+utest#ExpectTrue({expr})
+		Assert that {expr} is true.
+
+utest#AssertFalse({expr})
+utest#ExpectFalse({expr})
+		Assert that {expr} is false.
+
+utest#AssertEqual({value}, {expr})
+utest#ExpectEqual({value}, {expr})
+		Assert that {expr} is equal to {value}.
+
+utest#AssertNotEqual({value}, {expr})
+utest#ExpectNotEqual({value}, {expr})
+		Assert that {expr} is not equal to {value}.
+
+utest#AssertInRange({lower}, {upper}, {expr})
+utest#ExpectInRange({lower}, {upper}, {expr})
+		Assert that {expr} (either a |Number| or a |Float|) is greater
+		than or equal to {lower} less than or equal to {upper}.
+
+utest#AssertMatch({pattern}, {expr})
+utest#ExpectMatch({pattern}, {expr})
+		Assert that {pattern} matches {expr}.
+
+utest#AssertNoMatch({pattern}, {expr})
+utest#ExpectNoMatch({pattern}, {expr})
+		Assert that {pattern} does not {expr}.
+
+Setting expectations on mocks~
+
+utest#ExpectCall({mock}, {function} [, {args} [, {return}]])
+		TODO: write when adding support for mocking.
 
 ==============================================================================
 EVENTS							*utest-events*
 
-To customize the behaviour before and after running |:UTest|, Vim-UTest
-defines some user events.
+Vim-UTest provides a set of custom events to trigger further actions upon
+completion of the |:UTest| command.
 
-`UTestTestSucceeded`	Triggered after a successful test run
-`UTestTestFailed`	Triggered after a failed test run
-`UTestTestAborted`	Triggered after a test was aborted
+`UTestTestsSucceeded`	Triggered after a successful test run
+`UTestTestsFailed`	Triggered after a failed test run
+`UTestTestsAborted`	Triggered after a test is aborted due to an exception
 
-Example usage of `UTestTestFailed` to jump to the first error
+Example usage of `UTestTestsFailed` to jump to the first error
 >
-	let g:utest_focus_on_error = 0 " We do not want to focus the buffer
+	let g:utest_focus_on_error = 0  " We do not want to focus the buffer
 	augroup vim-utest-group
-	autocmd User UTestTestFailed cfirst
+	autocmd User UTestTestsFailed cfirst
 	augroup END
 <
 ==============================================================================
@@ -170,7 +235,7 @@ skips loading this file by default.
 	vim -es -N -n -u ~/.vim/vimrc -c 'UTest'
 <
 Be aware that if you want to echo messages in silent mode (Vim), you need to
-use `:verbose echo` instead of just `:echo` for them to be displayed.
+use |:verbose| for them to be displayed.
 
 ==============================================================================
 CONFIGURATION						*utest-configuration*
