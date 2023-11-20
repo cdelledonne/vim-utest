@@ -4,6 +4,7 @@
 " ==============================================================================
 
 let s:test = {}
+let s:test.sourced_files = {}
 let s:test.fixtures = []
 let s:test.qflist_id = -1
 
@@ -19,7 +20,7 @@ let s:error = libs#error#Get(s:const.plugin_name, s:logger)
 " Private functions
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
-function! s:ParseRunArgs(args) abort
+function! s:test._ParseRunArgs(args) abort
     let tests = []
     " Parse arguments.
     let parser = libs#argparser#New()
@@ -29,25 +30,48 @@ function! s:ParseRunArgs(args) abort
     let path = remove(opts, 'path')
     let path = path is v:null ? g:utest_default_test_dir : path
     let path = s:system.Path(path, v:false)
-    " Check test path.
-    if s:system.FileIsReadable(path)
-        let files = [path]
-    elseif s:system.DirectoryExists(path)
-        let files = s:system.Glob(path . '/**/*.vim')
-    else
-        call s:error.Throw('NO_SUCH_PATH', string(path))
-    endif
     " Process other arguments.
     if has_key(opts, 'name')
         let tests = type(opts.name) == v:t_list ? opts.name : [opts.name]
     endif
-    return [files, tests]
+    return [path, tests]
 endfunction
 
-function! s:CheckSelectedTestsExist(selected_tests, fixtures) abort
+function! s:test._ScanTestFiles(files) abort
+    " Source test files to discover test fixtures, then compile list of tests
+    " for each fixture.
+    for file in a:files
+        " If a file had already been sourced and has not been modified since,
+        " just use the cached test fixtures already discovered.
+        if has_key(self.sourced_files, file) &&
+            \ getftime(file) == self.sourced_files[file].ftime
+            call s:logger.LogDebug(
+                \ 'File %s already sourced, using cached fixtures', string(file)
+                \ )
+            call extend(self.fixtures, self.sourced_files[file].fixtures)
+        " Otherwise, (re)source the file, compile tests in fixtures found, and
+        " cache test fixtures.
+        else
+            call s:logger.LogDebug('(Re)sourcing file %s', string(file))
+            let first = len(self.fixtures)
+            call s:system.Source(file)
+            let last = len(self.fixtures)
+            let fixtures_this_file = self.fixtures[first:last]
+            for fixture in fixtures_this_file
+                call fixture._CompileTests()
+            endfor
+            let self.sourced_files[file] = {
+                \ 'ftime': getftime(file),
+                \ 'fixtures': fixtures_this_file,
+                \ }
+        endif
+    endfor
+endfunction
+
+function! s:test._CheckSelectedTestsExist(selected_tests) abort
     " Make list of all tests.
     let test_dicts = []
-    for fixture in a:fixtures
+    for fixture in self.fixtures
         call extend(test_dicts, fixture._GetTests())
     endfor
     let test_names = map(test_dicts, {_, v -> v.funcname})
@@ -60,7 +84,7 @@ function! s:CheckSelectedTestsExist(selected_tests, fixtures) abort
     endfor
 endfunction
 
-function! s:RunTest(fixture, test) abort
+function! s:test._RunTest(fixture, test) abort
     let error_list = []
     let a:test.setup_running = v:false
     let a:test.teardown_running = v:false
@@ -95,7 +119,8 @@ function! s:RunTest(fixture, test) abort
     if len(a:test.errors) > 0
         for error in a:test.errors
             let fmt = '%s:%d: Error: %s'
-            let error_args = [fmt, a:test.file, error.lnum, error.msg]
+            let test_file = s:system.Path(a:test.file, v:true)
+            let error_args = [fmt, test_file, error.lnum, error.msg]
             call call(funcref('s:report.ReportTestError'), error_args, s:report)
             call call(funcref('s:logger.LogDebug'), error_args, s:logger)
             call add(error_list, call('printf', error_args))
@@ -156,6 +181,48 @@ function! s:test.NewMock(functions) abort
     return mock
 endfunction
 
+" Recursively scan path to discover tests.
+"
+" Params:
+"     path : String
+"         file or directory to scan
+"     a:1 (noexcept) : Boolean
+"         if set to v:true, this function will not throw exceptions (useful e.g.
+"         when called to provide autocompletion for test names)
+"
+function! s:test.DiscoverTests(path, ...) abort
+    let noexcept = exists('a:1') ? a:1 : v:false
+    " Scan path recursively for test files.
+    if s:system.FileIsReadable(a:path)
+        let files = [s:system.Path(a:path, v:false)]
+    elseif s:system.DirectoryExists(a:path)
+        let files = s:system.Glob(a:path . '/**/*.vim')
+    else
+        if noexcept
+            call s:logger.LogWarn(
+                \ 'test.DiscoverTests() failed, ' .
+                \ 'path %s is invalid', string(a:path)
+                \ )
+            return
+        else
+            call s:error.Throw('NO_SUCH_PATH', string(a:path))
+        endif
+    endif
+    let self.fixtures = []
+    if noexcept
+        try
+            call self._ScanTestFiles(files)
+        catch /.*/
+            call s:logger.LogWarn(
+                \ 'test.DiscoverTests() failed, ' .
+                \ 'exception thrown from test._ScanTestFiles()'
+                \ )
+        endtry
+    else
+        call self._ScanTestFiles(files)
+    endif
+endfunction
+
 " Run tests in a certain directory or file.
 "
 " Params:
@@ -168,7 +235,6 @@ endfunction
 "
 function! s:test.RunTests(args) abort
     call s:logger.LogDebug('Invoked: test.Run(%s)', a:args)
-    let self.fixtures = []
     let num_tests = 0
     let num_failed_tests = 0
     let error_list = []
@@ -178,32 +244,26 @@ function! s:test.RunTests(args) abort
     endif
     call s:report.ReportInfo('Running Vim-UTest')
     try
-        let [files, selected_tests] = s:ParseRunArgs(a:args)
+        let [path, selected_tests] = self._ParseRunArgs(a:args)
         let run_all = len(selected_tests) > 0 ? v:false : v:true
-        " Source test files to discover test fixtures, then compile list of
-        " tests for each fixture.
-        for file in files
-            call s:system.Source(file)
-        endfor
-        for fixture in self.fixtures
-            call fixture._CompileTests()
-        endfor
+        call self.DiscoverTests(path)
         " Check that selected tests match at least one existing test each.
         if !run_all
-            call s:CheckSelectedTestsExist(selected_tests, self.fixtures)
+            call self._CheckSelectedTestsExist(selected_tests)
         endif
         " Run tests, going through test fixtures in the order they were
         " discovered in the sourced files.
         for fixture in self.fixtures
-            call s:report.ReportInfo('Running tests in file %s', fixture.file)
-            call s:logger.LogDebug('Running tests in file %s', fixture.file)
+            let fixture_file = s:system.Path(fixture.file, v:true)
+            call s:report.ReportInfo('Running tests in file %s', fixture_file)
+            call s:logger.LogDebug('Running tests in file %s', fixture_file)
             for test in fixture._GetTests()
                 " Only run this test if all tests are to be run or if a test was
                 " selected explicitly.
                 if run_all || s:system.ListHas(selected_tests, test.funcname)
                     let num_tests += 1
                     call s:assert.SetCurrentTest(test)
-                    let current_error_list = s:RunTest(fixture, test)
+                    let current_error_list = self._RunTest(fixture, test)
                     let num_failed_tests += len(current_error_list) > 0 ? 1 : 0
                     call extend(error_list, current_error_list)
                 endif
@@ -218,21 +278,21 @@ function! s:test.RunTests(args) abort
         return num_failed_tests
     finally
         if g:utest_focus_on_completion ||
-            \ (g:utest_focus_on_error && num_failed_tests > 0)
+                    \ (g:utest_focus_on_error && num_failed_tests > 0)
             call s:report.Focus()
         endif
     endtry
     " Generate Quickfix list for reported errors.
     let self.qflist_id = s:quickfix.Generate(
-        \ error_list, self.qflist_id, 'Vim-UTest')
+                \ error_list, self.qflist_id, 'Vim-UTest')
     " Report (and log) final stats.
     let num_passed_tests = num_tests - num_failed_tests
     call s:report.ReportInfo('Total tests: %d', num_tests)
     call s:report.ReportInfo('Passed: %d', num_passed_tests)
     call s:report.ReportInfo('Failed: %d', num_failed_tests)
     call s:logger.LogDebug('Total tests: %d, Passed: %d, Failed: %d',
-        \ num_tests, num_passed_tests, num_failed_tests
-        \ )
+                \ num_tests, num_passed_tests, num_failed_tests
+                \ )
     let cmd = num_failed_tests > 0 ? 'UTestTestsFailed' : 'UTestTestsSucceeded'
     call s:system.AutocmdRun(cmd)
     return num_failed_tests

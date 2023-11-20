@@ -16,12 +16,16 @@ let s:logger = libs#logger#Get(s:const.plugin_name)
 " Public functions
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
+" Just an empty default SetUp() function.
+"
 function! s:fixture.SetUp() abort
-    " Just an empty default SetUp() function.
+    call s:logger.LogDebug('Invoked: default fixture.SetUp()')
 endfunction
 
+" Just an empty default TearDown() function.
+"
 function! s:fixture.TearDown() abort
-    " Just an empty default TearDown() function.
+    call s:logger.LogDebug('Invoked: default fixture.TearDown()')
 endfunction
 
 " Process fixture to discover and compile list of tests.
@@ -72,12 +76,14 @@ endfunction
 " avoid naming conflicts with test function names defined by the user.
 "
 function! s:fixture._GetTests() abort
+    call s:logger.LogDebug('Invoked: fixture._GetTests()')
     return self.tests
 endfunction
 
 " Create new fixture 'object'.
 "
 function! utest#fixture#New() abort
+    call s:logger.LogDebug('Invoked: utest#fixture#New()')
     let fixture = deepcopy(s:fixture)
     let callables = filter(copy(fixture), {k, v -> type(v) == v:t_func})
     let fixture.internal_functions = keys(callables)
@@ -85,6 +91,6 @@ function! utest#fixture#New() abort
     " script it is called from is fifth-to-last.
     let call_point = s:system.GetStackTrace()[-5]
     let file = matchlist(call_point, '\m\Cscript\s\(.*\)\[\d\+\]')[1]
-    let fixture.file = s:system.Path(file, v:true)
+    let fixture.file = s:system.Path(file, v:false)
     return deepcopy(fixture)
 endfunction
