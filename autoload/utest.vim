@@ -78,26 +78,6 @@ function! utest#Run(...) abort
     endif
 endfunction
 
-" API function for completion for :UTest.
-"
-" Params:
-"     arg_lead : String
-"         the leading portion of the argument currently being completed
-"     cmd_line : String
-"         the entire command line
-"     cursor_pos : Number
-"         the cursor position in the command line (byte index)
-"
-" Returns:
-"     String
-"         available completion items, one per line
-"
-function! utest#Complete(arg_lead, cmd_line, cursor_pos) abort
-    call s:logger.LogDebug('API invoked: utest#Complete()')
-    return ''
-    " TODO: return complete options
-endfunction
-
 " API function to query information about Vim-UTest.
 "
 " Returns:
@@ -224,4 +204,79 @@ function! utest#ExpectCall(mock, function, ...) abort
     let args = exists('a:1') ? a:1 : v:null
     let return = exists('a:2') ? a:2 : v:null
     call s:assert.ExpectCall(a:mock, a:function, args, return)
+endfunction
+
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" Command completion
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+function! s:GetPath() abort
+    return s:test.DiscoverTests(s:path, v:true)
+endfunction
+
+" Dashed complete options.
+let s:opts = {
+    \ '--name': funcref('s:GetPath'),
+    \ '--cursor': v:null,
+    \ }
+
+" Path argument completed on the command line.
+let s:path = s:system.Path(g:utest_default_test_dir, v:false)
+
+" API function for completion for :UTest.
+"
+" Params:
+"     arg_lead : String
+"         the leading portion of the argument currently being completed
+"     cmd_line : String
+"         the entire command line
+"     cursor_pos : Number
+"         the cursor position in the command line (byte index)
+"
+" Returns:
+"     String
+"         available completion items, one per line
+"
+" Examples:
+"     one possible scenario:
+"         cmd_line: 'UTest test/path.vim '
+"         arg_lead: ''
+"         cursor_pos: 20
+"     another possible scenario:
+"         cmd_line: 'UTest test/path.vim -'
+"         arg_lead: '-'
+"         cursor_pos: 21
+"
+function! utest#Complete(arg_lead, cmd_line, cursor_pos) abort
+    " First argument is 'UTest', so we ignore it.
+    let args = split(a:cmd_line)[1:]
+    " If arg_lead is empty, all arguments count as completed, otherwise
+    " completed arguments are all but the last one.
+    let completed_args = a:arg_lead ==# '' ? args : args[:-2]
+    if len(completed_args) == 0
+        " If there are no completed arguments, we know that a path hasn't been
+        " completed, so we reset the saved path to the default value.
+        let s:path = s:system.Path(g:utest_default_test_dir, v:false)
+        " If the current argument being completed is either empty or it does not
+        " start with a dash, we know that a path is being completed, so we offer
+        " to complete paths.
+        if a:arg_lead ==# '' || match(a:arg_lead, '\m\C^-') == -1
+            return join(s:system.Glob(a:arg_lead . '*', v:true), "\n")
+        endif
+    else
+        " If some completed arguments exist, and the first completed argument
+        " does not start with a dash, we save this argument as the path.
+        if match(completed_args[0], '\m\C^-') == -1
+            let s:path = completed_args[0]
+        endif
+    endif
+    if len(completed_args) > 0 && get(s:opts, completed_args[-1], v:null) != v:null
+        " If some completed arguments exist, and the last argument requires a
+        " value, we offer to complete valid values for that argument
+        return join(s:opts[completed_args[-1]](), "\n")
+    else
+        " Otherwise, if no completed arguments exist, or the last argument does
+        " not require a value, we offer to complete dashed options.
+        return join(keys(s:opts), "\n")
+    endif
 endfunction

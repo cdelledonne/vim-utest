@@ -53,10 +53,9 @@ function! s:test._ScanTestFiles(files) abort
         " cache test fixtures.
         else
             call s:logger.LogDebug('(Re)sourcing file %s', string(file))
-            let first = len(self.fixtures)
+            let first_new_fixture_idx = len(self.fixtures)
             call s:system.Source(file)
-            let last = len(self.fixtures)
-            let fixtures_this_file = self.fixtures[first:last]
+            let fixtures_this_file = self.fixtures[first_new_fixture_idx :]
             for fixture in fixtures_this_file
                 call fixture._CompileTests()
             endfor
@@ -64,22 +63,6 @@ function! s:test._ScanTestFiles(files) abort
                 \ 'ftime': getftime(file),
                 \ 'fixtures': fixtures_this_file,
                 \ }
-        endif
-    endfor
-endfunction
-
-function! s:test._CheckSelectedTestsExist(selected_tests) abort
-    " Make list of all tests.
-    let test_dicts = []
-    for fixture in self.fixtures
-        call extend(test_dicts, fixture._GetTests())
-    endfor
-    let test_names = map(test_dicts, {_, v -> v.funcname})
-    call uniq(test_names)
-    " Check that selected tests is a subset of all tests.
-    for test in a:selected_tests
-        if !s:system.ListHas(test_names, test)
-            call s:error.Throw('TEST_DOES_NOT_EXIST', string(test))
         endif
     endfor
 endfunction
@@ -190,13 +173,17 @@ endfunction
 "         if set to v:true, this function will not throw exceptions (useful e.g.
 "         when called to provide autocompletion for test names)
 "
+" Returns:
+"     List
+"         names of tests found
+"
 function! s:test.DiscoverTests(path, ...) abort
     let noexcept = exists('a:1') ? a:1 : v:false
     " Scan path recursively for test files.
     if s:system.FileIsReadable(a:path)
         let files = [s:system.Path(a:path, v:false)]
     elseif s:system.DirectoryExists(a:path)
-        let files = s:system.Glob(a:path . '/**/*.vim')
+        let files = s:system.Glob(a:path . '/**/*.vim', v:false)
     else
         if noexcept
             call s:logger.LogWarn(
@@ -221,6 +208,13 @@ function! s:test.DiscoverTests(path, ...) abort
     else
         call self._ScanTestFiles(files)
     endif
+    " Make list of all tests.
+    let test_dicts = []
+    for fixture in self.fixtures
+        call extend(test_dicts, fixture._GetTests())
+    endfor
+    let test_names = map(test_dicts, {_, v -> v.funcname})
+    return uniq(test_names)
 endfunction
 
 " Run tests in a certain directory or file.
@@ -246,10 +240,14 @@ function! s:test.RunTests(args) abort
     try
         let [path, selected_tests] = self._ParseRunArgs(a:args)
         let run_all = len(selected_tests) > 0 ? v:false : v:true
-        call self.DiscoverTests(path)
+        let test_names = self.DiscoverTests(path)
         " Check that selected tests match at least one existing test each.
         if !run_all
-            call self._CheckSelectedTestsExist(selected_tests)
+            for test in selected_tests
+                if !s:system.ListHas(test_names, test)
+                    call s:error.Throw('TEST_DOES_NOT_EXIST', string(test))
+                endif
+            endfor
         endif
         " Run tests, going through test fixtures in the order they were
         " discovered in the sourced files.

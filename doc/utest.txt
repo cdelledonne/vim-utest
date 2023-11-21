@@ -124,6 +124,14 @@ test functions are executed.
 		{testname}.  The option `--name` can be passed multiple times.
 		[path] is used as above.
 
+Vim-UTest provides autocompletion for paths, options and test names. Just
+press <TAB> after `:UTest` in the command line to trigger autocompletion, i.e.
+>
+	:UTest <TAB>
+<
+Completion for test names only works properly if Vim-UTest can find tests in
+the specified [path], or if that's not specified in g:utest_default_test_dir.
+
 ==============================================================================
 FUNCTIONS						*utest-functions*
 
