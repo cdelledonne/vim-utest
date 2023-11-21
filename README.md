@@ -110,7 +110,7 @@ your code under test.
 ```vim
 function! s:fixture.TestComputeResult() abort
     let result = self.component.ComputeResult(1, 2)
-    call utest#ExpectEqual(result, 3)
+    call utest#ExpectEqual(3, result)
 endfunction
 ```
 
@@ -135,7 +135,7 @@ test functions are executed.  The command is used as below.  Run `:help
 utest-commands` for full documentation.
 
 ```vim
-:UTest [path] [--name <testname>]
+:UTest [path] [--name <testname>] [--cursor]
 ```
 
 <!--=========================================================================-->

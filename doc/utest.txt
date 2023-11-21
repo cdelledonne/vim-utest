@@ -92,7 +92,7 @@ expectations for your code under test.
 >
 	function! s:fixture.TestComputeResult() abort
 	    let result = self.component.ComputeResult(1, 2)
-	    call utest#ExpectEqual(result, 3)
+	    call utest#ExpectEqual(3, result)
 	endfunction
 <
 That's it, you're done writing unit tests. Or not - if your component under
@@ -123,6 +123,12 @@ test functions are executed.
 		Scan [path] for tests and only run the test specified by
 		{testname}.  The option `--name` can be passed multiple times.
 		[path] is used as above.
+
+:UTest --cursor
+		Run test under cursor.  The cursor must be between or on the
+		`function` and `endfunction` delimiters of a test function.
+		The options `--cursor` and `--name` are mutually exclusive,
+		using both will result in an error.
 
 Vim-UTest provides autocompletion for paths, options and test names. Just
 press <TAB> after `:UTest` in the command line to trigger autocompletion, i.e.

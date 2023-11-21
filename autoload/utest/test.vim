@@ -22,19 +22,35 @@ let s:error = libs#error#Get(s:const.plugin_name, s:logger)
 
 function! s:test._ParseRunArgs(args) abort
     let tests = []
+    let cursor = v:false
     " Parse arguments.
     let parser = libs#argparser#New()
     call parser.AddArgument('path', '?')
     call parser.AddArgument('--name', '*')
+    call parser.AddArgument('--cursor', '?', 'store_true')
     let opts = parser.Parse(a:args)
-    let path = remove(opts, 'path')
-    let path = path is v:null ? g:utest_default_test_dir : path
+    let path = opts.path is v:null ? g:utest_default_test_dir : opts.path
     let path = s:system.Path(path, v:false)
     " Process other arguments.
-    if has_key(opts, 'name')
-        let tests = type(opts.name) == v:t_list ? opts.name : [opts.name]
+    let tests = type(opts.name) == v:t_list ? opts.name : [opts.name]
+    if opts.cursor
+        " The option --cursor cannot be used in headless/silent mode.
+        if s:system.VimIsStarting()
+            call s:error.Throw('CANT_USE_CURSOR_IN_HEADLESS')
+        endif
+        " The option --cursor does not expect any path.
+        if opts.path isnot v:null
+            call s:error.Throw('UNEXPECTED_PATH_ARG')
+        endif
+        " The options --cursor and --name are mutually exclusive, using both
+        " results in an error.
+        if tests != []
+            call s:error.Throw(
+                \ 'CONFLICTING_ARGS', string('--cursor'), string('--name'))
+        endif
+        let cursor = v:true
     endif
-    return [path, tests]
+    return [path, tests, cursor]
 endfunction
 
 function! s:test._ScanTestFiles(files) abort
@@ -238,11 +254,34 @@ function! s:test.RunTests(args) abort
     endif
     call s:report.ReportInfo('Running Vim-UTest')
     try
-        let [path, selected_tests] = self._ParseRunArgs(a:args)
-        let run_all = len(selected_tests) > 0 ? v:false : v:true
+        let [path, selected_tests, cursor] = self._ParseRunArgs(a:args)
+        let run_all = (len(selected_tests) > 0 || cursor) ? v:false : v:true
+        " When the test under the cursor is to be run, we only scan the file in
+        " the current buffer.
+        if cursor
+            let path = s:system.Path(bufname('%'), v:false)
+        endif
         let test_names = self.DiscoverTests(path)
-        " Check that selected tests match at least one existing test each.
-        if !run_all
+        " When the test under the cursor is to be run, we lookup the name of the
+        " function under the cursor in the discovered test fixtures.
+        if cursor
+            let cursor_line = line('.')
+            let found = v:false
+            for fixture in self.fixtures
+                let test_under_cursor = fixture._SearchTest(path, cursor_line)
+                if test_under_cursor !=# ''
+                    let selected_tests = [test_under_cursor]
+                    let found = v:true
+                    break
+                endif
+            endfor
+            if !found
+                call s:error.Throw('NO_TEST_UNDER_CURSOR')
+            endif
+        endif
+        " Check that if some tests were explicitly selected, these tests match
+        " at least one existing test each.
+        if len(selected_tests) > 0
             for test in selected_tests
                 if !s:system.ListHas(test_names, test)
                     call s:error.Throw('TEST_DOES_NOT_EXIST', string(test))

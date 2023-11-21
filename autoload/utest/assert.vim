@@ -38,7 +38,7 @@ function! s:AssertTrue(condition, error_msg, test, abort) abort
     elseif a:test.teardown_running
         let func_lnum = a:test.teardown_lnum
     else
-        let func_lnum = a:test.func_lnum
+        let func_lnum = a:test.start_lnum
     endif
     let error_lnum = func_lnum + str2nr(relative_error_lnum)
     " Add error to list of errors to be reported.

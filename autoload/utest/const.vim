@@ -19,10 +19,16 @@ let s:const.errors = {
     \     'Test with function %s does not exist',
     \ 'NO_SUCH_PATH':
     \     'Path %s is invalid, no such file or directory exist',
+    \ 'NO_TEST_UNDER_CURSOR':
+    \     'No test under cursor',
+    \ 'CANT_USE_CURSOR_IN_HEADLESS':
+    \     'Cannot use ''--cursor'' in headless/silent mode',
+    \ 'UNEXPECTED_PATH_ARG':
+    \     'Path argument not expected when ''--cursor'' is used',
+    \ 'CONFLICTING_ARGS':
+    \     'Cannot use both arguments %s and %s',
     \ 'COMMAND_RUNNING':
     \     'Another UTest command is already running',
-    \ 'OPT_NOT_IMPLEMENTED':
-    \     'Option %s not yet implemented',
     \ }
 
 let s:const.config_vars = {}
