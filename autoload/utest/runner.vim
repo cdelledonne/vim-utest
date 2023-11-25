@@ -1,26 +1,57 @@
 " ==============================================================================
-" Location:    autoload/utest/test.vim
-" Description: Unit testing and mocking
+" Location:    autoload/utest/runner.vim
+" Description: Top-level execution manager for :UTest
 " ==============================================================================
 
-let s:test = {}
-let s:test.sourced_files = {}
-let s:test.fixtures = []
-let s:test.qflist_id = -1
+let s:runner = {}
+let s:runner.components_to_source = []
+let s:runner.sourced_test_files = {}
+let s:runner.fixtures = []
+let s:runner.mocks = []
+let s:runner.qflist_id = -1
 
 let s:assert = utest#assert#Get()
 let s:const = utest#const#Get()
+let s:logger = libs#logger#Get(s:const.plugin_name)
+let s:error = libs#error#Get(s:const.plugin_name, s:logger)
 let s:quickfix = libs#quickfix#Get()
 let s:report = utest#report#Get()
 let s:system = libs#system#Get()
-let s:logger = libs#logger#Get(s:const.plugin_name)
-let s:error = libs#error#Get(s:const.plugin_name, s:logger)
 
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 " Private functions
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
-function! s:test._ParseRunArgs(args) abort
+function! s:runner._MockConstructor(mock) abort
+    let stack = s:system.GetStackTrace()
+    let script = matchlist(stack[-3], '\m\C^script\s\(\f\+\)\[\d\+\]')[1]
+    call add(self.components_to_source, script)
+    call sort(self.components_to_source)
+    call uniq(self.components_to_source)
+    return a:mock
+endfunction
+
+function! s:runner._RedefAutoloadFuncs() abort
+    for mock in s:runner.mocks
+        call mock._RedefAutoloadFuncs()
+    endfor
+endfunction
+
+function! s:runner._OnSourcePost() abort
+    " When sourcing an autoload file (of a dependency component), we redefine
+    " the autoload mock functions, so that the actual autoload functions are
+    " replaced by mocks.
+    call self._RedefAutoloadFuncs()
+endfunction
+
+function! s:runner._SetCurrentTest(test) abort
+    call s:assert.SetCurrentTest(a:test)
+    for mock in s:runner.mocks
+        call mock._SetCurrentTest(a:test)
+    endfor
+endfunction
+
+function! s:runner._ParseRunArgs(args) abort
     let tests = []
     let cursor = v:false
     " Parse arguments.
@@ -53,38 +84,74 @@ function! s:test._ParseRunArgs(args) abort
     return [path, tests, cursor]
 endfunction
 
-function! s:test._ScanTestFiles(files) abort
-    " Source test files to discover test fixtures, then compile list of tests
-    " for each fixture.
+function! s:runner._ScanTestFiles(files) abort
+    " Source test files to discover test fixtures and mocks, then compile list
+    " of tests for each fixture.
     for file in a:files
-        " If a file had already been sourced and has not been modified since,
-        " just use the cached test fixtures already discovered.
-        if has_key(self.sourced_files, file) &&
-            \ getftime(file) == self.sourced_files[file].ftime
+        " If a test file had already been sourced and has not been modified
+        " since, just use the cached test fixtures and mocks already discovered.
+        if has_key(self.sourced_test_files, file) &&
+            \ getftime(file) == self.sourced_test_files[file].ftime
             call s:logger.LogDebug(
-                \ 'File %s already sourced, using cached fixtures', string(file)
+                \ 'File %s already sourced, using cached fixtures and mocks',
+                \ string(file)
                 \ )
-            call extend(self.fixtures, self.sourced_files[file].fixtures)
-        " Otherwise, (re)source the file, compile tests in fixtures found, and
-        " cache test fixtures.
+            call extend(self.fixtures, self.sourced_test_files[file].fixtures)
+            call extend(self.mocks, self.sourced_test_files[file].mocks)
+        " Otherwise, (re)source the test file, compile tests in fixtures found,
+        " and cache test fixtures and mocks.
         else
             call s:logger.LogDebug('(Re)sourcing file %s', string(file))
             let first_new_fixture_idx = len(self.fixtures)
+            let first_new_mock_idx = len(self.mocks)
             call s:system.Source(file)
             let fixtures_this_file = self.fixtures[first_new_fixture_idx :]
+            let mocks_this_file = self.mocks[first_new_mock_idx :]
             for fixture in fixtures_this_file
                 call fixture._CompileTests()
             endfor
-            let self.sourced_files[file] = {
+            let self.sourced_test_files[file] = {
                 \ 'ftime': getftime(file),
                 \ 'fixtures': fixtures_this_file,
+                \ 'mocks': mocks_this_file,
                 \ }
         endif
     endfor
 endfunction
 
-function! s:test._RunTest(fixture, test) abort
+function! s:runner._CheckExpectedCalls(test) abort
+    let expected_calls = []
+    for mock in self.mocks
+        call extend(expected_calls, mock._GetExpectedCalls())
+    endfor
+    for call in expected_calls
+        " Extract line number where expectation was set.
+        if a:test.setup_running
+            let func_lnum = a:test.setup_lnum
+        elseif a:test.teardown_running
+            let func_lnum = a:test.teardown_lnum
+        else
+            let func_lnum = a:test.start_lnum
+        endif
+        let error_lnum = func_lnum + str2nr(call.relative_expectation_lnum)
+        " Add error to list of errors to be reported.
+        let error_descr = printf(
+            \ 'Unmatched expected call to function ''%s(%s)''',
+            \ call.funcname,
+            \ string(call.args)[1:-2]
+            \ )
+        let error_func_name = 'ExpectCall'
+        let error_msg = printf('%s (%s)', error_descr, error_func_name)
+        call add(a:test.errors, {'msg': error_msg, 'lnum': error_lnum})
+    endfor
+endfunction
+
+function! s:runner._RunTest(fixture, test) abort
     let error_list = []
+    for mock in self.mocks
+        call mock._Reset()
+    endfor
+    let a:test.errors = []
     let a:test.setup_running = v:false
     let a:test.teardown_running = v:false
     call s:report.ReportTestInfo('Running test ''%s''', a:test.funcname)
@@ -115,6 +182,9 @@ function! s:test._RunTest(fixture, test) abort
             let a:test.teardown_running = v:false
         endtry
     endif
+    " Check if all expected mock calls have been issued.
+    call self._CheckExpectedCalls(a:test)
+    " Report and log errors.
     if len(a:test.errors) > 0
         for error in a:test.errors
             let fmt = '%s:%d: Error: %s'
@@ -143,41 +213,55 @@ endfunction
 "     Dictionary
 "         test fixture
 "
-function! s:test.NewFixture() abort
-    call s:logger.LogDebug('Invoked: test.NewFixture()')
+function! s:runner.NewFixture() abort
+    call s:logger.LogDebug('Invoked: runner.NewFixture()')
     let fixture = utest#fixture#New()
     call add(self.fixtures, fixture)
     return fixture
 endfunction
 
-" Create new mock object.
-"
-" Mock objects represent dependencies of the component under test. Store the
-" returned mock object into test fixture.
+" Create new mock object. Mock objects represent dependencies of the component
+" under test.
 "
 " Params:
 "     functions : List
-"         list of functions to mock, where each item is a dictionary consisting
-"         of two entries: 'name' - the function's name, and 'ref' - a reference
-"         to the function to be mocked (the 'ref' key is only necessary when the
-"         function to be mocked is not a dict function)
+"         list of function names to mock, each item can be either an autoload
+"         function (like 'plugin#component#SomeFunc') or a dictionary function
+"         (like 'SomeFunc') - these function names can then be passed to
+"         utest#ExpectCall()
 "
 " Returns:
 "     Dictionary
 "         mock object
 "
-function! s:test.NewMock(functions) abort
-    call s:logger.LogDebug('Invoked: test.NewMock(%s)', a:functions)
-    let mock = {}
-    for function in a:functions
-        " TODO: Funcref should have a proper definition
-        let Funcref = {-> 0}
-        let mock[function.name] = Funcref
-        if has_key(function, 'ref')
-            execute 'let ' . function.ref ' = Funcref'
-        endif
-    endfor
+" Notes:
+"     - Function names that contain a '#' character are assumed to be autoload
+"       functions, whilst those that do not contain any '#' character are
+"       assumed to be dictionary functions
+"     - When the function to be mocked is a dictionary function of the
+"       component, like component.SomeFunc(), the name in the list of functions
+"       must just be the name of the dictionary key, in this example 'SomeFunc'
+"
+function! s:runner.NewMock(functions) abort
+    call s:logger.LogDebug('Invoked: runner.NewMock(%s)', a:functions)
+    let mock = utest#mock#New(a:functions)
+    call add(self.mocks, mock)
     return mock
+endfunction
+
+" Define new mock constructor function.
+"
+" Params:
+"     mock : Dictionary
+"         mock object, as returned by utest#NewMock()
+"
+" Returns:
+"     Funcref
+"         mock constructor function reference
+"
+function! s:runner.NewMockConstructor(mock) abort
+    call s:logger.LogDebug('Invoked: runner.NewMockConstructor(%s)', a:mock.id)
+    return funcref('self._MockConstructor', [a:mock], self)
 endfunction
 
 " Recursively scan path to discover tests.
@@ -193,7 +277,7 @@ endfunction
 "     List
 "         names of tests found
 "
-function! s:test.DiscoverTests(path, ...) abort
+function! s:runner.DiscoverTests(path, ...) abort
     let noexcept = exists('a:1') ? a:1 : v:false
     " Scan path recursively for test files.
     if s:system.FileIsReadable(a:path)
@@ -203,7 +287,7 @@ function! s:test.DiscoverTests(path, ...) abort
     else
         if noexcept
             call s:logger.LogWarn(
-                \ 'test.DiscoverTests() failed, ' .
+                \ 'runner.DiscoverTests() failed, ' .
                 \ 'path %s is invalid', string(a:path)
                 \ )
             return
@@ -212,13 +296,14 @@ function! s:test.DiscoverTests(path, ...) abort
         endif
     endif
     let self.fixtures = []
+    let self.mocks = []
     if noexcept
         try
             call self._ScanTestFiles(files)
         catch /.*/
             call s:logger.LogWarn(
-                \ 'test.DiscoverTests() failed, ' .
-                \ 'exception thrown from test._ScanTestFiles()'
+                \ 'runner.DiscoverTests() failed, ' .
+                \ 'exception thrown from runner._ScanTestFiles()'
                 \ )
         endtry
     else
@@ -243,8 +328,8 @@ endfunction
 "     Number
 "         number of failed tests
 "
-function! s:test.RunTests(args) abort
-    call s:logger.LogDebug('Invoked: test.Run(%s)', a:args)
+function! s:runner.RunTests(args) abort
+    call s:logger.LogDebug('Invoked: runner.Run(%s)', a:args)
     let num_tests = 0
     let num_failed_tests = 0
     let error_list = []
@@ -288,6 +373,24 @@ function! s:test.RunTests(args) abort
                 endif
             endfor
         endif
+        " Redefine mocks' autoload functions. This only works if the actual
+        " autoload functions have already been loaded. We also define an autocmd
+        " to redefine these functions when sourcing the corresponding autoload
+        " files, in case these haven't been sourced yet.
+        call self._RedefAutoloadFuncs()
+        call s:system.AutocmdSet(
+            \ 'SourcePost',
+            \ '*',
+            \ 'call utest#runner#Get()._OnSourcePost()',
+            \ 'vimutest-mock'
+            \ )
+        " When a component under test has been sourced already in a previous
+        " call to this function, we must source it again, to ensure that mock
+        " constructors are called again and thus the object-like dependencies
+        " defined in the component's file are re-assigned the newest mock.
+        for component in self.components_to_source
+            call s:system.Source(component)
+        endfor
         " Run tests, going through test fixtures in the order they were
         " discovered in the sourced files.
         for fixture in self.fixtures
@@ -299,13 +402,15 @@ function! s:test.RunTests(args) abort
                 " selected explicitly.
                 if run_all || s:system.ListHas(selected_tests, test.funcname)
                     let num_tests += 1
-                    call s:assert.SetCurrentTest(test)
+                    call self._SetCurrentTest(test)
                     let current_error_list = self._RunTest(fixture, test)
                     let num_failed_tests += len(current_error_list) > 0 ? 1 : 0
                     call extend(error_list, current_error_list)
                 endif
             endfor
         endfor
+        " Delete autocmd to redefine mocks' autoload functions.
+        call s:system.AutocmdDelete('SourcePost', '*', 'vimutest-mock')
     catch /.*/
         let num_failed_tests = 1
         call s:report.ReportTestError(v:throwpoint)
@@ -335,8 +440,8 @@ function! s:test.RunTests(args) abort
     return num_failed_tests
 endfunction
 
-" Get test 'object'.
+" Get runner 'object'.
 "
-function! utest#test#Get() abort
-    return s:test
+function! utest#runner#Get() abort
+    return s:runner
 endfunction

@@ -5,10 +5,10 @@
 
 let s:assert = utest#assert#Get()
 let s:const = utest#const#Get()
-let s:system = libs#system#Get()
-let s:test = utest#test#Get()
 let s:logger = libs#logger#Get(s:const.plugin_name)
 let s:error = libs#error#Get(s:const.plugin_name, s:logger)
+let s:system = libs#system#Get()
+let s:runner = utest#runner#Get()
 
 " Print news of new Vim-UTest versions.
 let s:news_items = libs#util#FilterNews(
@@ -39,28 +39,50 @@ endfor
 "
 function! utest#NewFixture() abort
     call s:logger.LogDebug('API invoked: utest#NewFixture()')
-    return s:test.NewFixture()
+    return s:runner.NewFixture()
 endfunction
 
-" Create new mock object.
-"
-" Mock objects represent dependencies of the component under test. Store the
-" returned mock object into test fixture.
+" Create new mock object. Mock objects represent dependencies of the component
+" under test.
 "
 " Params:
 "     functions : List
-"         list of functions to mock, where each item is a dictionary consisting
-"         of two entries: 'name' - the function's name, and 'ref' - a reference
-"         to the function to be mocked (the 'ref' key is only necessary when the
-"         function to be mocked is not a dict function)
+"         list of function names to mock, each item can be either an autoload
+"         function (like 'plugin#component#SomeFunc') or a dictionary function
+"         (like 'SomeFunc') - these function names can then be passed to
+"         utest#ExpectCall()
 "
 " Returns:
 "     Dictionary
 "         mock object
 "
+" Notes:
+"     - Function names that contain a '#' character are assumed to be autoload
+"       functions, whilst those that do not contain any '#' character are
+"       assumed to be dictionary functions
+"     - When the function to be mocked is a dictionary function of the
+"       component, like component.SomeFunc(), the name in the list of functions
+"       must just be the name of the dictionary key, in this example 'SomeFunc'
+"
 function! utest#NewMock(functions) abort
     call s:logger.LogDebug('API invoked: utest#NewMock(%s)', a:functions)
-    return s:test.NewMock(a:functions)
+    return s:runner.NewMock(a:functions)
+endfunction
+
+" Define new mock constructor function.
+"
+" Params:
+"     mock : Dictionary
+"         mock object, as returned by utest#NewMock()
+"
+" Returns:
+"     Funcref
+"         mock constructor function reference
+"
+function! utest#NewMockConstructor(mock) abort
+    call s:logger.LogDebug(
+        \ 'API invoked: utest#NewMockConstructor(%s)', a:mock.id)
+    return s:runner.NewMockConstructor(a:mock)
 endfunction
 
 " API function for :UTest.
@@ -71,7 +93,7 @@ endfunction
 "
 function! utest#Run(...) abort
     call s:logger.LogDebug('API invoked: utest#Run(%s)', a:000)
-    let num_failed_tests = s:test.RunTests(a:000)
+    let num_failed_tests = s:runner.RunTests(a:000)
     " If Vim-UTest was started from the command line, exit.
     if s:system.VimIsStarting()
         execute 'cquit ' . (num_failed_tests > 0 ? 1 : 0)
@@ -190,20 +212,22 @@ endfunction
 "         mock object, as returned by utest#NewMock()
 "     function : String
 "         function name, as passed to utest#NewMock()
-"     a:1 : List
-"         optional list of function arguments
+"     args : List
+"         list of function arguments or v:null - passing an empty list means the
+"         function is expected to be called with no arguments, whilst passing
+"         v:null means that the function is expected to be called with any
+"         number of arguments
 "     a:2 : Any
 "         optional return object
 "
-function! utest#ExpectCall(mock, function, ...) abort
+function! utest#ExpectCall(mock, function, args, ...) abort
     call s:logger.LogDebug('API invoked: utest#ExpectCall(%s, %s, %s)',
         \ a:mock, a:function, a:000)
     if a:0 > 2
         call s:error.Throw('TOO_MANY_ARGS', 4)
     endif
-    let args = exists('a:1') ? a:1 : v:null
-    let return = exists('a:2') ? a:2 : v:null
-    call s:assert.ExpectCall(a:mock, a:function, args, return)
+    let return = exists('a:1') ? a:1 : v:null
+    call a:mock._AddExpectedCall(a:function, a:args, return)
 endfunction
 
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
@@ -211,7 +235,7 @@ endfunction
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
 function! s:GetPath() abort
-    return s:test.DiscoverTests(s:path, v:true)
+    return s:runner.DiscoverTests(s:path, v:true)
 endfunction
 
 " Dashed complete options.

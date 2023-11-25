@@ -9,8 +9,8 @@ let s:fixture.file = ''
 let s:fixture.tests = []
 
 let s:const = utest#const#Get()
-let s:system = libs#system#Get()
 let s:logger = libs#logger#Get(s:const.plugin_name)
+let s:system = libs#system#Get()
 
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 " Default functions
@@ -124,5 +124,5 @@ function! utest#fixture#New() abort
     let call_point = s:system.GetStackTrace()[-5]
     let file = matchlist(call_point, '\m\Cscript\s\(.*\)\[\d\+\]')[1]
     let fixture.file = s:system.Path(file, v:false)
-    return deepcopy(fixture)
+    return fixture
 endfunction
