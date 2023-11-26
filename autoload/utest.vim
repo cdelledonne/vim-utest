@@ -30,8 +30,8 @@ endfor
 " Create new test fixture object.
 "
 " Define test functions on the returned fixture. Also define SetUp() and
-" TearDown() methods on the returned fixture. Also use the fixture to store mock
-" objects and runtime data.
+" TearDown() methods on the returned fixture. Also use the fixture to store
+" runtime data.
 "
 " Returns:
 "     Dictionary

@@ -40,8 +40,7 @@ A Vimscript project is more suited to be tested with Vim-UTest if
 functionalities like writing to buffer, triggering autocommands, etc. are
 confined to an abstraction layer at the edge of the project's software
 architecture.  The abstraction layer can then be mocked when testing units that
-depend on it.  And yes, Vim-UTest supports mocking (see [Writing
-mocks](#writing-mocks)).
+depend on it.  And yes, Vim-UTest supports [mocking](#mocks).
 
 <!--=========================================================================-->
 
@@ -138,7 +137,7 @@ under test and its dependencies are defined in one of the following ways.
 
 ### Dependency is one more autoload functions
 
-Mocks are most simply defined when the component under test depends on one ore
+Mocks are most simply defined when the component under test depends on one or
 more external user-defined functions (internal Vimscript functions cannot be
 mocked).  In this case, your component under test is defined in a way that
 resembles this simplified example:
@@ -231,7 +230,7 @@ function! s:fixture.TestGetResult() abort
 endfunction
 ```
 
-The function `utest#ExpectCall()` is used as explained above.
+The function `utest#ExpectCall()` is used as shown above.
 
 <!--=========================================================================-->
 
@@ -243,10 +242,11 @@ follows.  Run `:help utest-functions` for full documentation.
 
 ### Creating test fixtures and mocks
 
-| Function                   | Description                                 |
-|:---------------------------|:--------------------------------------------|
-| `utest#NewFixture()`       | Create and return a new test fixture object |
-| `utest#NewMock(functions)` | Create and return a new mock object         |
+| Function                         | Description                                               |
+|:---------------------------------|:----------------------------------------------------------|
+| `utest#NewFixture()`             | Create and return a new test fixture object               |
+| `utest#NewMock(functions)`       | Create and return a new mock object                       |
+| `utest#NewMockConstructor(mock)` | Define a mock "constructor" for an object-like dependency |
 
 ### Defining pre-test and post-test actions
 
@@ -282,10 +282,10 @@ recorded, but the test continues.
 ### Setting expectations on mocks
 
 To tell Vim-UTest that a mock function is expected to be called, use the
-following function.  The arguments to be passed are the mock object, the name of
-the function (as passed to `utest#NewMock()`), a list of the arguments expected
-to be passed to the mock function (or `v:null` to accept any arguments), and
-optionally a value that the mock function should return.
+following function.  The arguments to be passed are: the mock object, the name
+of the function (as passed to `utest#NewMock()`), a list of the arguments
+expected to be passed to the mock function (or `v:null` to skip checking the
+arguments), and optionally a value that the mock function should return.
 
 | Function                                           | Description                           |
 |:---------------------------------------------------|:--------------------------------------|
@@ -297,7 +297,8 @@ optionally a value that the mock function should return.
 
 When you're done writing unit tests and mocks, you just run the `:UTest`
 command.  You will observe a report of the outcomes of your unit tests as the
-test functions are executed.  The command is used as below.  Run `:help
+test functions are executed.  The command is used as below, where `[path]` is
+the path to a file or directory containing unit tests.  Run `:help
 utest-commands` for full documentation.
 
 ```vim
@@ -399,5 +400,6 @@ Carlo Delle Donne.
 [vroom]: https://github.com/google/vroom
 [vim-vspec]: https://github.com/kana/vim-vspec
 [vim-themis]: https://github.com/thinca/vim-themis
+[vim-plug]: https://github.com/junegunn/vim-plug
 [contributing]: ./CONTRIBUTING.md
 [license]: ./LICENSE

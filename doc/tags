@@ -6,6 +6,7 @@ utest-configuration	utest.txt	/*utest-configuration*
 utest-contents	utest.txt	/*utest-contents*
 utest-contributing	utest.txt	/*utest-contributing*
 utest-events	utest.txt	/*utest-events*
+utest-fixture	utest.txt	/*utest-fixture*
 utest-functions	utest.txt	/*utest-functions*
 utest-intro	utest.txt	/*utest-intro*
 utest-license	utest.txt	/*utest-license*

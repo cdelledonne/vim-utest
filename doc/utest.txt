@@ -10,16 +10,17 @@ CONTENTS						*utest-contents*
  1. Intro ............................................. |utest-intro|
  2. When to use ....................................... |utest-when-to-use|
  3. Usage ............................................. |utest-usage|
- 4. Writing unit tests ................................ |utest-tests|
- 5. Writing mocks ..................................... |utest-mocks|
- 6. Commands .......................................... |utest-commands|
+ 4. Test fixture ...................................... |utest-fixture|
+ 5. Test cases ........................................ |utest-tests|
+ 6. Mocks ............................................. |utest-mocks|
  7. Functions ......................................... |utest-functions|
- 8. Events ............................................ |utest-events|
- 9. Quickfix list ..................................... |utest-quickfix|
-10. Running tests from the command line ............... |utest-cli|
-11. Configuration ..................................... |utest-configuration|
-12. Contributing ...................................... |utest-contributing|
-13. License ........................................... |utest-license|
+ 8. Commands .......................................... |utest-commands|
+ 9. Events ............................................ |utest-events|
+10. Quickfix list ..................................... |utest-quickfix|
+11. Running tests from the command line ............... |utest-cli|
+12. Configuration ..................................... |utest-configuration|
+13. Contributing ...................................... |utest-contributing|
+14. License ........................................... |utest-license|
 
 ==============================================================================
 INTRO							*utest-intro*
@@ -55,18 +56,22 @@ that depend on it.  And yes, Vim-UTest supports mocking (see |utest-mocks|).
 ==============================================================================
 USAGE							*utest-usage*
 
-To use Vim-UTest, you first define some unit tests. Then you just call the
-|:UTest| command and observe your tests' results. A quick guide follows.
+To use Vim-UTest, you first define some unit tests.  Then you just run the
+|:UTest| command and observe your tests' results.  For an introduction to
+writing unit tests using Vim-UTest, see below.
+
+Writing a unit tests typically comprises three steps: defining a test fixture,
+optionally defining one or more mocks, and defining the test cases themselves.
+
+You can spread your tests over as many test files as you need, which you can for
+instance store in a `test/` directory at the root of your project.  The name and
+path of this directory are for you to choose.
 
 ==============================================================================
-WRITING UNIT TESTS					*utest-tests*
+TEST FIXTURE						*utest-fixture*
 
-You can distribute your tests over as many test files as you need, which you
-can for instance store in a `test/` directory at the root of your project. The
-name and path of this directory are for you to choose.
-
-Start by creating a test fixture. The fixture will then be used to define unit
-tests and the optional `SetUp()` and `TearDown()` functions.
+Start by creating a test fixture.  The fixture will then be used to define
+unit tests and the optional `SetUp()` and `TearDown()` functions.
 >
 	let s:fixture = utest#NewFixture()
 <
@@ -86,57 +91,115 @@ the test, but only if `SetUp()` succeeds.
 	    call self.component.CleanUp()
 	endfunction
 <
-Finally, write your unit tests as dictionary functions of the test fixture.
-Make use of the functions provided by Vim-UTest (|utest-functions|) to set
-expectations for your code under test.
+==============================================================================
+TEST CASES						*utest-tests*
+
+Define your test cases as dictionary functions of the test fixture.  Make use
+of the functions provided by Vim-UTest (|utest-functions|) to set expectations
+for your code under test.
 >
-	function! s:fixture.TestComputeResult() abort
-	    let result = self.component.ComputeResult(1, 2)
+	function! s:fixture.TestGetResult() abort
+	    let result = self.component.GetResult(1, 2)
 	    call utest#ExpectEqual(3, result)
 	endfunction
 <
-That's it, you're done writing unit tests. Or not - if your component under
+That's it, you're done writing unit tests.  Or not - if your component under
 test depends on other components that you don't want to trigger, but you still
 want to check that your component under test issues the appropriate calls to
 its dependencies, then it's time to write a mock!
 
 ==============================================================================
-WRITING MOCKS						*utest-mocks*
+MOCKS							*utest-mocks*
 
-TODO: write when adding support for mocking.
+Writing a mock can seem complicated - but it isn't, as long as your component
+under test and its dependencies are defined in one of the following ways.
 
-==============================================================================
-COMMANDS						*utest-commands*
+Dependency is one more autoload functions~
 
-When you're done writing unit tests and mocks, you just run the |:UTest|
-command.  You will observe a report of the outcomes of your unit tests as the
-test functions are executed.
-
-							*:UTest*
-:UTest [path]
-		Scan [path] for tests and run all tests found.  [path] can be
-		a file or a directory.  Directories are scanned recursively.
-		If [path] is not specified, Vim-UTest will use the value of
-		`g:utest_default_test_dir` (see |utest-configuration|).
-
-:UTest [path] --name {testname}
-		Scan [path] for tests and only run the test specified by
-		{testname}.  The option `--name` can be passed multiple times.
-		[path] is used as above.
-
-:UTest --cursor
-		Run test under cursor.  The cursor must be between or on the
-		`function` and `endfunction` delimiters of a test function.
-		The options `--cursor` and `--name` are mutually exclusive,
-		using both will result in an error.
-
-Vim-UTest provides autocompletion for paths, options and test names. Just
-press <TAB> after `:UTest` in the command line to trigger autocompletion, i.e.
+Mocks are most simply defined when the component under test depends on one or
+more external user-defined functions (internal Vimscript functions cannot be
+mocked).  In this case, your component under test is defined in a way that
+resembles this simplified example:
 >
-	:UTest <TAB>
+	let s:component = {}
+
+	function! s:component.GetResult(lhs, rhs) abort
+	    call myplugin#dependency#CheckOperands(a:lhs, a:rhs)
+	    let result = myplugin#dependency#ComputeResult(a:lhs, a:rhs)
+	endfunction
+
+	function! myplugin#component#Get() abort
+	    return s:component
+	endfunction
 <
-Completion for test names only works properly if Vim-UTest can find tests in
-the specified [path], or if that's not specified in g:utest_default_test_dir.
+The external functions to be mocked are those called in the `GetResult()`
+function.  To define a test case involving this function, first define a mock
+like the following in your test file:
+>
+	let s:mock = utest#NewMock([
+	    \ 'myplugin#dependency#CheckOperands',
+	    \ 'myplugin#dependency#ComputeResult',
+	    \ ])
+<
+Then, define a test case like the following:
+>
+	function! s:fixture.TestGetResult() abort
+	    call utest#ExpectCall(
+	        \ s:mock, 'myplugin#dependency#CheckOperands', [1, 2])
+	    call utest#ExpectCall(
+	        \ s:mock, 'myplugin#dependency#ComputeResult', [1, 2], 3)
+	    let result = self.component.GetResult(1, 2)
+	    call utest#ExpectEqual(3, result)
+	endfunction
+<
+The function `utest#ExpectCall()` is used to tell Vim-UTest which mock
+functions are expected to be called, in order, throughout the remainder of the
+test case.  This function takes up to four arguments: a mock object, the name
+of a mock function, a list of arguments the mock function is expected to be
+passed (use |v:null| to skip checking the arguments), and optionally the value
+that the mock function should return when invoked.
+
+Dependency is an object-like dictionary~
+
+The second mocking scenario supported by Vim-UTest is a component which
+depends on an object-like dictionary, which is "imported" through a
+constructor-like function called at the top-level of your component under test
+(not within a function).  The dependency's dictionary functions are used in
+the component under test.  Something like this:
+>
+	let s:component = {}
+	let s:dependency = myplugin#dependency#Get()
+
+	function! s:component.GetResult(lhs, rhs) abort
+	    call s:dependency.CheckOperands(a:lhs, a:rhs)
+	    let result = s:dependency.ComputeResult(a:lhs, a:rhs)
+	endfunction
+
+	function! myplugin#component#Get() abort
+	    return s:component
+	endfunction
+<
+This time, you define a mock object by passing the name of the dictionary
+functions to be mocked to `utest#NewMock()` and by overriding the dependency's
+"constructor" (`myplugin#dependency#Get()`), like below:
+>
+	let s:mock = utest#NewMock([
+	    \ 'CheckOperands',
+	    \ 'ComputeResult',
+	    \ ])
+
+	let myplugin#dependency#Get = utest#NewMockConstructor(s:mock)
+<
+Then, define a test case like the following:
+>
+	function! s:fixture.TestGetResult() abort
+	    call utest#ExpectCall(s:mock, 'CheckOperands', [1, 2])
+	    call utest#ExpectCall(s:mock, 'ComputeResult', [1, 2], 3)
+	    let result = self.component.GetResult(1, 2)
+	    call utest#ExpectEqual(3, result)
+	endfunction
+<
+The function `utest#ExpectCall()` is used as shown above.
 
 ==============================================================================
 FUNCTIONS						*utest-functions*
@@ -147,13 +210,25 @@ pre-test and post-test actions, and to set expectations.
 Creating test fixtures and mocks~
 
 utest#NewFixture()
-		Create and return a new test fixture object, which is
-		effectively a |Dictionary|.  You can then define mocks, set-up
-		and tear-down actions and unit tests by adding items to the
-		returned |Dictionary|.
+		Create and return a new test fixture object (which is
+		effectively a |Dictionary|).  You can then define set-up and
+		tear-down actions and test cases by defining dictionary
+		functions on the returned |Dictionary|.
 
 utest#NewMock({functions})
-		TODO: write when adding support for mocking.
+		Create and return a new mock object (which is effectively a
+		|Dictionary|).  {functions} is a |List| of names of functions
+		to be mocked.  If a function name contains one or more `#`
+		characters it is assumed to be an autoload function, otherwise
+		it is assumed to be a dictionary function of the dependency to
+		be mocked.  See |utest-mocks| for some examples.
+
+utest#NewMockConstructor({mock})
+		Define a mock "constructor" for an object-like dependency.
+		The mock constructor (a |Funcref|) is to be assigned to a
+		variable named like the constructor to override.  {mock} is
+		the mock object created with `utest#NewMock()`.  See
+		|utest-mocks| for an example.
 
 Defining pre-test and post-test actions~
 
@@ -172,7 +247,7 @@ Setting simple expectations~
 
 Expectations can be specified by using the `Assert` variants of the following
 functions or the `Expect` ones.  When an `Assert` function fails, the current
-test is stopped. When an `Expect` function fails instead, the error is
+test is stopped.  When an `Expect` function fails instead, the error is
 recorded, but the test continues.
 
 utest#AssertTrue({expr})
@@ -206,8 +281,48 @@ utest#ExpectNoMatch({pattern}, {expr})
 
 Setting expectations on mocks~
 
-utest#ExpectCall({mock}, {function} [, {args} [, {return}]])
-		TODO: write when adding support for mocking.
+utest#ExpectCall({mock}, {function}, {args} [, {return}])
+		Tell Vim-UTest that a mock function is expected to be called.
+		{mock} is the mock object (created with `utest#NewMock()`),
+		{function} is the name of the function (as passed to
+		`utest#NewMock()`) expected to be called, {args} is a |List|
+		of arguments expected to be passed to the mock function (or
+		|v:null| to skip checking the arguments), and {return} is an
+		optional value that the mock function should return if called.
+
+==============================================================================
+COMMANDS						*utest-commands*
+
+When you're done writing unit tests and mocks, you just run the |:UTest|
+command.  You will observe a report of the outcomes of your unit tests as the
+test functions are executed.
+
+							*:UTest*
+:UTest [path]
+		Scan [path] for tests and run all tests found.  [path] can be
+		a file or a directory.  Directories are scanned recursively.
+		If [path] is not specified, Vim-UTest will use the value of
+		`g:utest_default_test_dir` (see |utest-configuration|).
+
+:UTest [path] --name {testname}
+		Scan [path] for tests and only run the test specified by
+		{testname}.  The option `--name` can be passed multiple times.
+		[path] is used as above.
+
+:UTest --cursor
+		Run test under cursor.  The cursor must be between or on the
+		`function` and `endfunction` delimiters of a test function.
+		The options `--cursor` and `--name` are mutually exclusive,
+		using both will result in an error.
+
+Vim-UTest provides autocompletion for paths, options and test names.  Just
+press <TAB> after `:UTest` in the command line to trigger autocompletion, i.e.
+>
+	:UTest <TAB>
+<
+Completion for test names only works properly if Vim-UTest can find tests in
+the specified [path], or, if a path is not specified, in the default path
+configured with `g:utest_default_test_dir`.
 
 ==============================================================================
 EVENTS							*utest-events*
