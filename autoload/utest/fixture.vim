@@ -7,6 +7,7 @@ let s:fixture = {}
 let s:fixture.internal_functions = []
 let s:fixture.file = ''
 let s:fixture.tests = []
+let s:fixture.mocks = []
 
 let s:const = utest#const#Get()
 let s:logger = libs#logger#Get(s:const.plugin_name)
@@ -31,7 +32,7 @@ endfunction
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 " Public functions
 "
-" Note: This are public functions, but their names start with an underscore to
+" Note: These are public functions, but their names start with an underscore to
 " avoid naming conflicts with test function names defined by the user.
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
@@ -110,6 +111,26 @@ function! s:fixture._SearchTest(file, lnum) abort
     else
         return ''
     endif
+endfunction
+
+" Register a mock object with the fixture.
+"
+" Params:
+"     mock : Dictionary
+"         the mock object to be registered
+"
+function! s:fixture._RegisterMock(mock) abort
+    call add(self.mocks, a:mock)
+endfunction
+
+" Get fixture's mock objects.
+"
+" Returns:
+"     List
+"         list of mock objects
+"
+function! s:fixture._GetMocks() abort
+    return self.mocks
 endfunction
 
 " Create new fixture 'object'.

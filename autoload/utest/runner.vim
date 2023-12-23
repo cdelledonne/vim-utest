@@ -4,7 +4,6 @@
 " ==============================================================================
 
 let s:runner = {}
-let s:runner.components_to_source = []
 let s:runner.sourced_test_files = {}
 let s:runner.fixtures = []
 let s:runner.mocks = []
@@ -23,30 +22,31 @@ let s:system = libs#system#Get()
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
 function! s:runner._MockConstructor(mock) abort
-    let stack = s:system.GetStackTrace()
-    let script = matchlist(stack[-3], '\m\C^script\s\(\f\+\)\[\d\+\]')[1]
-    call add(self.components_to_source, script)
-    call sort(self.components_to_source)
-    call uniq(self.components_to_source)
     return a:mock
 endfunction
 
-function! s:runner._RedefAutoloadFuncs() abort
-    for mock in s:runner.mocks
-        call mock._RedefAutoloadFuncs()
+function! s:runner._OverrideAutoloadFuncs() abort
+    for mock in self.current_fixture._GetMocks()
+        call mock._OverrideAutoloadFuncs()
+    endfor
+endfunction
+
+function! s:runner._RestoreAutoloadFuncs() abort
+    for mock in self.current_fixture._GetMocks()
+        call mock._RestoreAutoloadFuncs()
     endfor
 endfunction
 
 function! s:runner._OnSourcePost() abort
-    " When sourcing an autoload file (of a dependency component), we redefine
+    " When sourcing an autoload file (of a dependency component), we override
     " the autoload mock functions, so that the actual autoload functions are
     " replaced by mocks.
-    call self._RedefAutoloadFuncs()
+    call self._OverrideAutoloadFuncs()
 endfunction
 
 function! s:runner._SetCurrentTest(test) abort
     call s:assert.SetCurrentTest(a:test)
-    for mock in s:runner.mocks
+    for mock in self.mocks
         call mock._SetCurrentTest(a:test)
     endfor
 endfunction
@@ -162,6 +162,7 @@ function! s:runner._RunTest(fixture, test) abort
         let a:test.setup_running = v:true
         call a:fixture.SetUp()
     catch /vim-utest-assert-failed/
+        call add(a:test.errors, {'msg': 'Test aborted due to assert error'})
     finally
         let a:test.setup_running = v:false
     endtry
@@ -171,6 +172,7 @@ function! s:runner._RunTest(fixture, test) abort
         try
             call a:fixture[a:test.funcname]()
         catch /vim-utest-assert-failed/
+            call add(a:test.errors, {'msg': 'Test aborted due to assert error'})
         endtry
         " The TearDown() function is run whether or not the test function as
         " incurred any errors.
@@ -178,6 +180,7 @@ function! s:runner._RunTest(fixture, test) abort
             let a:test.teardown_running = v:true
             call a:fixture.TearDown()
         catch /vim-utest-assert-failed/
+            call add(a:test.errors, {'msg': 'Test aborted due to assert error'})
         finally
             let a:test.teardown_running = v:false
         endtry
@@ -187,6 +190,11 @@ function! s:runner._RunTest(fixture, test) abort
     " Report and log errors.
     if len(a:test.errors) > 0
         for error in a:test.errors
+            if !has_key(error, 'lnum')
+                call s:report.ReportTestError(error.msg)
+                call s:logger.LogDebug(error.msg)
+                continue
+            endif
             let fmt = '%s:%d: Error: %s'
             let test_file = s:system.Path(a:test.file, v:true)
             let error_args = [fmt, test_file, error.lnum, error.msg]
@@ -224,6 +232,8 @@ endfunction
 " under test.
 "
 " Params:
+"     fixture : Dictionary
+"         fixture object, as returned by utest#NewFixture()
 "     functions : List
 "         list of function names to mock, each item can be either an autoload
 "         function (like 'plugin#component#SomeFunc') or a dictionary function
@@ -242,10 +252,11 @@ endfunction
 "       component, like component.SomeFunc(), the name in the list of functions
 "       must just be the name of the dictionary key, in this example 'SomeFunc'
 "
-function! s:runner.NewMock(functions) abort
+function! s:runner.NewMock(fixture, functions) abort
     call s:logger.LogDebug('Invoked: runner.NewMock(%s)', a:functions)
     let mock = utest#mock#New(a:functions)
     call add(self.mocks, mock)
+    call a:fixture._RegisterMock(mock)
     return mock
 endfunction
 
@@ -254,14 +265,14 @@ endfunction
 " Params:
 "     mock : Dictionary
 "         mock object, as returned by utest#NewMock()
+"     function : String
+"         name of constructor function to mock (an autoload function)
 "
-" Returns:
-"     Funcref
-"         mock constructor function reference
-"
-function! s:runner.NewMockConstructor(mock) abort
-    call s:logger.LogDebug('Invoked: runner.NewMockConstructor(%s)', a:mock.id)
-    return funcref('self._MockConstructor', [a:mock], self)
+function! s:runner.NewMockConstructor(mock, function) abort
+    call s:logger.LogDebug('Invoked: runner.NewMockConstructor(%s, %s)',
+        \ a:mock.id, a:function)
+    call a:mock._AddMockConstructor(
+        \ a:function, funcref('self._MockConstructor', [a:mock], self))
 endfunction
 
 " Recursively scan path to discover tests.
@@ -373,27 +384,21 @@ function! s:runner.RunTests(args) abort
                 endif
             endfor
         endif
-        " Redefine mocks' autoload functions. This only works if the actual
-        " autoload functions have already been loaded. We also define an autocmd
-        " to redefine these functions when sourcing the corresponding autoload
-        " files, in case these haven't been sourced yet.
-        call self._RedefAutoloadFuncs()
-        call s:system.AutocmdSet(
-            \ 'SourcePost',
-            \ '*',
-            \ 'call utest#runner#Get()._OnSourcePost()',
-            \ 'vimutest-mock'
-            \ )
-        " When a component under test has been sourced already in a previous
-        " call to this function, we must source it again, to ensure that mock
-        " constructors are called again and thus the object-like dependencies
-        " defined in the component's file are re-assigned the newest mock.
-        for component in self.components_to_source
-            call s:system.Source(component)
-        endfor
         " Run tests, going through test fixtures in the order they were
         " discovered in the sourced files.
         for fixture in self.fixtures
+            let self.current_fixture = fixture
+            " Override mocks' autoload functions. This only works if the actual
+            " autoload functions have already been loaded. We also define an
+            " autocmd to override the functions when sourcing the corresponding
+            " autoload files, in case these haven't been sourced yet.
+            call self._OverrideAutoloadFuncs()
+            call s:system.AutocmdSet(
+                \ 'SourcePost',
+                \ '*',
+                \ 'call utest#runner#Get()._OnSourcePost()',
+                \ 'vimutest-mock'
+                \ )
             let fixture_file = s:system.Path(fixture.file, v:true)
             call s:report.ReportInfo('Running tests in file %s', fixture_file)
             call s:logger.LogDebug('Running tests in file %s', fixture_file)
@@ -408,9 +413,13 @@ function! s:runner.RunTests(args) abort
                     call extend(error_list, current_error_list)
                 endif
             endfor
+            " Delete autocmd to override mocks' autoload functions, then restore
+            " original autoload functions. Must be done in this order because
+            " _RestoreAutoloadFuncs() might source some files, and thus the
+            " 'SourcePost' event should not trigger the autocmd.
+            call s:system.AutocmdDelete('SourcePost', '*', 'vimutest-mock')
+            call self._RestoreAutoloadFuncs()
         endfor
-        " Delete autocmd to redefine mocks' autoload functions.
-        call s:system.AutocmdDelete('SourcePost', '*', 'vimutest-mock')
     catch /.*/
         let num_failed_tests = 1
         call s:report.ReportTestError(v:throwpoint)
@@ -420,23 +429,23 @@ function! s:runner.RunTests(args) abort
         return num_failed_tests
     finally
         if g:utest_focus_on_completion ||
-                    \ (g:utest_focus_on_error && num_failed_tests > 0)
+            \ (g:utest_focus_on_error && num_failed_tests > 0)
             call s:report.Focus()
         endif
     endtry
     " Generate Quickfix list for reported errors.
     let self.qflist_id = s:quickfix.Generate(
-                \ error_list, self.qflist_id, 'Vim-UTest')
+        \ error_list, self.qflist_id, 'Vim-UTest')
     " Report (and log) final stats.
     let num_passed_tests = num_tests - num_failed_tests
     call s:report.ReportInfo('Total tests: %d', num_tests)
     call s:report.ReportInfo('Passed: %d', num_passed_tests)
     call s:report.ReportInfo('Failed: %d', num_failed_tests)
     call s:logger.LogDebug('Total tests: %d, Passed: %d, Failed: %d',
-                \ num_tests, num_passed_tests, num_failed_tests
-                \ )
-    let cmd = num_failed_tests > 0 ? 'UTestTestsFailed' : 'UTestTestsSucceeded'
-    call s:system.AutocmdRun(cmd)
+        \ num_tests, num_passed_tests, num_failed_tests
+        \ )
+    let evt = num_failed_tests > 0 ? 'UTestTestsFailed' : 'UTestTestsSucceeded'
+    call s:system.AutocmdRun(evt)
     return num_failed_tests
 endfunction
 

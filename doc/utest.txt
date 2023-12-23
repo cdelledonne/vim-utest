@@ -162,13 +162,11 @@ that the mock function should return when invoked.
 Dependency is an object-like dictionary~
 
 The second mocking scenario supported by Vim-UTest is a component which
-depends on an object-like dictionary, which is "imported" through a
-constructor-like function called at the top-level of your component under test
-(not within a function).  The dependency's dictionary functions are used in
+depends on an object-like dictionary, which is "imported" in the "constructor"
+of the component under test. The dependency's dictionary functions are used in
 the component under test.  Something like this:
 >
 	let s:component = {}
-	let s:dependency = myplugin#dependency#Get()
 
 	function! s:component.GetResult(lhs, rhs) abort
 	    call s:dependency.CheckOperands(a:lhs, a:rhs)
@@ -176,6 +174,7 @@ the component under test.  Something like this:
 	endfunction
 
 	function! myplugin#component#Get() abort
+	    let s:dependency = myplugin#dependency#Get()
 	    return s:component
 	endfunction
 <
@@ -188,7 +187,7 @@ functions to be mocked to `utest#NewMock()` and by overriding the dependency's
 	    \ 'ComputeResult',
 	    \ ])
 
-	let myplugin#dependency#Get = utest#NewMockConstructor(s:mock)
+	call utest#NewMockConstructor(s:mock, 'myplugin#dependency#Get')
 <
 Then, define a test case like the following:
 >
@@ -223,11 +222,12 @@ utest#NewMock({functions})
 		it is assumed to be a dictionary function of the dependency to
 		be mocked.  See |utest-mocks| for some examples.
 
-utest#NewMockConstructor({mock})
+utest#NewMockConstructor({mock}, {function})
 		Define a mock "constructor" for an object-like dependency.
 		The mock constructor (a |Funcref|) is to be assigned to a
 		variable named like the constructor to override.  {mock} is
-		the mock object created with `utest#NewMock()`.  See
+		the mock object created with `utest#NewMock()`.  {function} is
+		the name of the constructor function to mock.  See
 		|utest-mocks| for an example.
 
 Defining pre-test and post-test actions~

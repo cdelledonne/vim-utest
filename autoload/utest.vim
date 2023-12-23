@@ -46,6 +46,8 @@ endfunction
 " under test.
 "
 " Params:
+"     fixture : Dictionary
+"         fixture object, as returned by utest#NewFixture()
 "     functions : List
 "         list of function names to mock, each item can be either an autoload
 "         function (like 'plugin#component#SomeFunc') or a dictionary function
@@ -64,9 +66,9 @@ endfunction
 "       component, like component.SomeFunc(), the name in the list of functions
 "       must just be the name of the dictionary key, in this example 'SomeFunc'
 "
-function! utest#NewMock(functions) abort
+function! utest#NewMock(fixture, functions) abort
     call s:logger.LogDebug('API invoked: utest#NewMock(%s)', a:functions)
-    return s:runner.NewMock(a:functions)
+    return s:runner.NewMock(a:fixture, a:functions)
 endfunction
 
 " Define new mock constructor function.
@@ -74,15 +76,13 @@ endfunction
 " Params:
 "     mock : Dictionary
 "         mock object, as returned by utest#NewMock()
+"     function : String
+"         name of constructor function to mock (an autoload function)
 "
-" Returns:
-"     Funcref
-"         mock constructor function reference
-"
-function! utest#NewMockConstructor(mock) abort
-    call s:logger.LogDebug(
-        \ 'API invoked: utest#NewMockConstructor(%s)', a:mock.id)
-    return s:runner.NewMockConstructor(a:mock)
+function! utest#NewMockConstructor(mock, function) abort
+    call s:logger.LogDebug('API invoked: utest#NewMockConstructor(%s, %s)',
+        \ a:mock.id, a:function)
+    return s:runner.NewMockConstructor(a:mock, a:function)
 endfunction
 
 " API function for :UTest.

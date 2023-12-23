@@ -66,7 +66,7 @@ endfunction
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 " Public functions
 "
-" Note: This are public functions, but their names start with an underscore to
+" Note: These are public functions, but their names start with an underscore to
 " avoid naming conflicts with function names defined by the user.
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
@@ -74,34 +74,98 @@ function! s:mock._SetCurrentTest(test) abort
     let self.current_test = a:test
 endfunction
 
-" Redefine mock's autoload functions to point to mock function. This is only
+" Add mock constructor function (an autoload function) to a mock
+"
+" Params:
+"     funcname : String
+"         name of the autoload function to mock
+"     funcref : Funcref
+"         function reference to bind funcname to
+"
+function! s:mock._AddMockConstructor(funcname, funcref) abort
+    let autoload_func = {
+        \ 'funcname': a:funcname,
+        \ 'funcref': a:funcref,
+        \ 'overridden': v:false,
+        \ }
+    call add(self.autoload_funcs, autoload_func)
+endfunction
+
+" Override mock's autoload functions to point to mock function. This is only
 " successful after the actual autoload functions have been defined, that is,
 " after the file that defines these functions has been sourced.
 "
-function! s:mock._RedefAutoloadFuncs() abort
+function! s:mock._OverrideAutoloadFuncs() abort
     call s:logger.LogDebug(
-        \ 'Invoked: mock._RedefAutoloadFuncs() (mock ID: %d)', self.id)
+        \ 'Invoked: mock._OverrideAutoloadFuncs() (mock ID: %d)', self.id)
     for autoload_func in self.autoload_funcs
-        " We only try to redefine an autoload function if it already exists and
-        " if it hasn't been redefined already.
-        if !exists('*' . autoload_func.funcname) || autoload_func.defined
+        " We only try to override an autoload function if it already exists and
+        " if it hasn't been overridden already.
+        if !exists('*' . autoload_func.funcname) || autoload_func.overridden
             continue
+        endif
+        " Before overriding the function, we store the name of the file where it
+        " was originally defined, so that we can re-source that file to restore
+        " the original function in _RestoreAutoloadFuncs().
+        let [file, _, _] = s:system.GetFunctionInfo(autoload_func.funcname)
+        let autoload_func.original_file = file
+        " Autoload functions added with _AddMockConstructor() must be bound to a
+        " specific function reference, as passed to _AddMockConstructor().
+        if has_key(autoload_func, 'funcref')
+            let funcbody = 'return autoload_func.funcref()'
+        " Other autoload functions bind to the default function _MockFuncion().
+        else
+            let funcbody = printf(
+                \ 'return call(self._MockFunction, [%s] + a:000)',
+                \ string(autoload_func.funcname)
+                \ )
         endif
         " This is somewhat ugly, but it's the only thing that works. Just
         " assigning a Funcref to the function's name does not work.
         call execute([
             \ printf('function! %s(...) abort closure', autoload_func.funcname),
-            \ printf(
-            \     'return call(self._MockFunction, [%s] + a:000)',
-            \     string(autoload_func.funcname)
-            \     ),
+            \ funcbody,
             \ 'endfunction',
             \ ])
         call s:logger.LogDebug(
-            \ 'Redefined function %s (mock ID: %d)',
+            \ 'Overridden function %s (mock ID: %d)',
             \ string(autoload_func.funcname), self.id
             \ )
-        let autoload_func.defined = v:true
+        let autoload_func.overridden = v:true
+    endfor
+endfunction
+
+" Restore original definition of autoload functions.
+"
+function! s:mock._RestoreAutoloadFuncs() abort
+    call s:logger.LogDebug(
+        \ 'Invoked: mock._RestoreAutoloadFuncs() (mock ID: %d)', self.id)
+    let files_to_source = []
+    for autoload_func in self.autoload_funcs
+        " We only try to restore an autoload function if it already exists and
+        " if it is not an overridden function.
+        if !exists('*' . autoload_func.funcname) || !autoload_func.overridden
+            continue
+        endif
+        " Restoring an overridden function means deleting the existing
+        " definition and re-sourcing the file where it was originally defined.
+        " We delete the existing definition here, and we re-source files after
+        " deleting all overridden functions.
+        call execute('delfunction ' . autoload_func.funcname)
+        if has_key(autoload_func, 'original_file')
+            call add(files_to_source, autoload_func.original_file)
+        endif
+        call s:logger.LogDebug(
+            \ 'Restored function %s (mock ID: %d)',
+            \ string(autoload_func.funcname), self.id
+            \ )
+        let autoload_func.overridden = v:false
+    endfor
+    for file in uniq(files_to_source)
+        call s:system.Source(file)
+        call s:logger.LogDebug(
+            \ 'Re-sourced file %s (mock ID: %d)', string(file), self.id
+            \ )
     endfor
 endfunction
 
@@ -195,10 +259,10 @@ function! utest#mock#New(functions) abort
         " Functions that contain at least a '#' character are assumed to be
         " autoload functions.
         if match(funcname, '#') != -1
-            " Mock autoload functions can only be redefined after the actual
-            " autoload function as been loaded, so we store the name of these
-            " and redefine the functions in _RedefAutoloadFuncs().
-            let autoload_func = {'funcname': funcname, 'defined': v:false}
+            " Mock autoload functions can only be defined after the actual
+            " autoload function has been loaded, so we store the name of these
+            " and override the functions in _OverrideAutoloadFuncs().
+            let autoload_func = {'funcname': funcname, 'overridden': v:false}
             call add(mock.autoload_funcs, autoload_func)
         else
             " Mock dictionary functions are immediately defined instead.

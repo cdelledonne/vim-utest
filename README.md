@@ -187,14 +187,12 @@ function should return when invoked.
 ### Dependency is an object-like dictionary
 
 The second mocking scenario supported by Vim-UTest is a component which depends
-on an object-like dictionary, which is "imported" through a constructor-like
-function called at the top-level of your component under test (not within a
-function).  The dependency's dictionary functions are used in the component
-under test.  Something like this:
+on an object-like dictionary, which is "imported" in the "constructor" of the
+component under test. The dependency's dictionary functions are used in the
+component under test.  Something like this:
 
 ```vim
 let s:component = {}
-let s:dependency = myplugin#dependency#Get()
 
 function! s:component.GetResult(lhs, rhs) abort
     call s:dependency.CheckOperands(a:lhs, a:rhs)
@@ -202,6 +200,7 @@ function! s:component.GetResult(lhs, rhs) abort
 endfunction
 
 function! myplugin#component#Get() abort
+    let s:dependency = myplugin#dependency#Get()
     return s:component
 endfunction
 ```
@@ -216,7 +215,7 @@ let s:mock = utest#NewMock([
     \ 'ComputeResult',
     \ ])
 
-let myplugin#dependency#Get = utest#NewMockConstructor(s:mock)
+call utest#NewMockConstructor(s:mock, 'myplugin#dependency#Get')
 ```
 
 Then, define a test case like the following:
@@ -242,11 +241,11 @@ follows.  Run `:help utest-functions` for full documentation.
 
 ### Creating test fixtures and mocks
 
-| Function                         | Description                                               |
-|:---------------------------------|:----------------------------------------------------------|
-| `utest#NewFixture()`             | Create and return a new test fixture object               |
-| `utest#NewMock(functions)`       | Create and return a new mock object                       |
-| `utest#NewMockConstructor(mock)` | Define a mock "constructor" for an object-like dependency |
+| Function                                   | Description                                               |
+|:-------------------------------------------|:----------------------------------------------------------|
+| `utest#NewFixture()`                       | Create and return a new test fixture object               |
+| `utest#NewMock(functions)`                 | Create and return a new mock object                       |
+| `utest#NewMockConstructor(mock, function)` | Define a mock "constructor" for an object-like dependency |
 
 ### Defining pre-test and post-test actions
 
