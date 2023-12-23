@@ -8,7 +8,7 @@ It can be run from within Vim/Neovim as well as from the command line.
 ![version](https://img.shields.io/github/v/tag/cdelledonne/vim-utest?label=version&sort=semver)
 ![license](https://img.shields.io/github/license/cdelledonne/vim-utest)
 
-![screenshot][screenshot]
+![screenshot](https://github.com/cdelledonne/vim-utest/assets/24732205/09a50c15-1e3e-4f22-ad6b-86ce69ec9101)
 
 **Features**
 
