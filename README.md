@@ -135,7 +135,7 @@ dependencies, then it's time to write a mock!
 Writing a mock can seem complicated — but it isn't, as long as your component
 under test and its dependencies are defined in one of the following ways.
 
-### Dependency is one more autoload functions
+### Dependency is one or more autoload functions
 
 Mocks are most simply defined when the component under test depends on one or
 more external user-defined functions (internal Vimscript functions cannot be
