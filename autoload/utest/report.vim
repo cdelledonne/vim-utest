@@ -55,7 +55,8 @@ function! s:report._OpenWindow() abort
     endif
     " Create a new buffer if none exist.
     if self.buffer == -1
-        let ids = s:system.BufferCreate(v:false, 'Vim-UTest')
+        let Function = funcref('s:system.BufferCreate', [v:false], s:system)
+        let ids = s:system.WindowRun(utest_win_id, Function)
         let self.buffer = ids['buffer_id']
         call s:system.BufferSetOptions(self.buffer, s:buffer_options)
         call s:system.WindowSetOptions(utest_win_id, s:window_options)
