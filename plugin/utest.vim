@@ -2,7 +2,7 @@
 " File:        utest.vim
 " Description: Vim-UTest, Vimscript unit testing plugin with mocking support
 " Maintainer:  Carlo Delle Donne <https://github.com/cdelledonne>
-" Version:     0.1.0
+" Version:     0.1.1
 " License:     MIT
 " ==============================================================================
 

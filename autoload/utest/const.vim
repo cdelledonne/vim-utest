@@ -6,7 +6,7 @@
 let s:const = {}
 
 let s:const.plugin_name = 'utest'
-let s:const.plugin_version = '0.1.0'
+let s:const.plugin_version = '0.1.1'
 
 let s:const.echo_prefix = '[Vim-UTest] '
 

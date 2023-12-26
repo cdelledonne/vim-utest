@@ -9,6 +9,13 @@ The format is based on [Keep a Changelog][format], and this project adheres to
 
 <!--=========================================================================-->
 
+## 0.1.1 &ndash; 2023-12-26
+
+### Changed
+* Upgrade libs to v1.7.0.
+
+<!--=========================================================================-->
+
 ## 0.1.0 &ndash; 2023-12-23
 
 First release.
